@@ -3,7 +3,8 @@
 
 interface Part {
   mimeType?: string
-  body?: { data?: string }
+  filename?: string
+  body?: { data?: string; attachmentId?: string; size?: number }
   parts?: Part[]
   headers?: { name: string; value: string }[]
 }
@@ -12,6 +13,17 @@ const decode = (data: string): string => Buffer.from(data.replace(/-/g, '+').rep
 
 export function header(part: Part, name: string): string {
   return part.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
+}
+
+// The files attached to an email (PDFs, images...): name, size and the id Gmail needs to download it.
+export function attachmentParts(payload: Part): { name: string; id: string; size: number }[] {
+  const out: { name: string; id: string; size: number }[] = []
+  const walk = (p: Part): void => {
+    if (p.filename && p.body?.attachmentId) out.push({ name: p.filename, id: p.body.attachmentId, size: p.body.size ?? 0 })
+    for (const c of p.parts ?? []) walk(c)
+  }
+  walk(payload)
+  return out
 }
 
 // The readable text of an email: the plain-text part if there is one, else the HTML with the tags removed.

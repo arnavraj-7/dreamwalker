@@ -8,9 +8,9 @@
 
 import { promises as fs } from 'node:fs'
 import { basename } from 'node:path'
-import { resolveInside } from '../hands/files'
+import { createdFileUndo, resolveInside } from '../hands/files'
 import { gmailUpload, googleApi, googleState, signIn, signOut } from './auth'
-import { type Attachment, eventSummary, header, looksLikeEmail, messageText, mimeEmail, rawEmail } from './parse'
+import { type Attachment, attachmentParts, eventSummary, header, looksLikeEmail, messageText, mimeEmail, rawEmail } from './parse'
 import type { Tool } from '../hands/tool'
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
@@ -84,11 +84,67 @@ const readMail: Tool = {
       if (!/^[\w-]+$/.test(id)) return { ok: false, error: 'Use an id from gmail_list.' }
       const m = await googleApi(`${GMAIL}/messages/${id}?format=full`)
       const p = m.payload as Parameters<typeof messageText>[0]
-      return { ok: true, from: header(p, 'From'), to: header(p, 'To'), subject: header(p, 'Subject'), date: header(p, 'Date'), text: messageText(p).slice(0, 6000) }
+      const files = attachmentParts(p).map((a) => ({ name: a.name, size: size(a.size) }))
+      return { ok: true, from: header(p, 'From'), to: header(p, 'To'), subject: header(p, 'Subject'), date: header(p, 'Date'), text: messageText(p).slice(0, 6000), attachments: files }
     } catch (err) {
       return fail(err)
     }
   }
+}
+
+// SAVE AN ATTACHMENT through Gmail's API, straight into Downloads. Clicking Gmail's own download button
+// through the screen "worked" but saved nothing: the button only shows on hover, and the preview Orbi had
+// opened covered it (a certificate PDF, 2026-10-27). The API is exact, and needs no extra permission.
+const saveAttachment: Tool = {
+  name: 'gmail_save_attachment',
+  description:
+    'Save a file attached to an email (a certificate, ticket, invoice PDF...) into the Downloads folder, by the email ' +
+    'id from gmail_list. `name` = part of the file name if the email has several. Use this instead of clicking ' +
+    'download in Gmail. Then open_file can show it.',
+  parameters: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } }, required: ['id'] },
+  risk: 'low',
+  effect: 'write',
+  family: 'files',
+  async run(args) {
+    try {
+      const id = str(args.id)
+      if (!/^[\w-]+$/.test(id)) return { ok: false as const, error: 'Use an id from gmail_list.' }
+      const m = await googleApi(`${GMAIL}/messages/${id}?format=full`)
+      const all = attachmentParts(m.payload as Parameters<typeof attachmentParts>[0])
+      if (all.length === 0) return { ok: false as const, error: 'That email has no attached files.' }
+      const want = str(args.name).toLowerCase()
+      const matches = want ? all.filter((a) => a.name.toLowerCase().includes(want)) : all
+      if (matches.length !== 1) {
+        return { ok: false as const, error: `Which file? This email has: ${all.map((a) => a.name).join(', ')}. Call again with \`name\`.` }
+      }
+      const a = matches[0]
+      const r = await googleApi(`${GMAIL}/messages/${id}/attachments/${a.id}`)
+      const data = Buffer.from(String(r.data ?? '').replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+      // A safe file name (no folders, no characters Windows refuses); never overwrite: "name (2).pdf".
+      const clean = a.name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || 'attachment'
+      const dot = clean.lastIndexOf('.')
+      const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, '']
+      for (let n = 1; n <= 50; n++) {
+        const file = await resolveInside(`Downloads/${n === 1 ? clean : `${stem} (${n})${ext}`}`, false)
+        try {
+          await fs.writeFile(file, data, { flag: 'wx' }) // wx = fail if it already exists
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue
+          throw err
+        }
+        // VERIFY (A3): the real file, the real size.
+        const written = await fs.stat(file).catch(() => null)
+        if (!written || written.size !== data.length) {
+          return { result: { ok: false as const, error: `Saving failed: the file in Downloads is ${written ? `${written.size} bytes, not ${data.length}` : 'missing'}.` }, undo: { file } }
+        }
+        return { result: { ok: true as const, saved: file, size: size(data.length), verified: true }, undo: { file } }
+      }
+      return { ok: false as const, error: 'Downloads already has 50 files with that name.' }
+    } catch (err) {
+      return fail(err)
+    }
+  },
+  undo: (undoData) => createdFileUndo(undoData)
 }
 
 // NEW ADDRESSES ARE SPELLED BACK FIRST. Speech recognition gets addresses wrong: "arnavrajstudy" was heard as
@@ -282,4 +338,4 @@ const searchDrive: Tool = {
   }
 }
 
-export const GOOGLE_TOOLS: Tool[] = [connect, listMail, readMail, sendMail, listEvents, createEvent, searchDrive]
+export const GOOGLE_TOOLS: Tool[] = [connect, listMail, readMail, saveAttachment, sendMail, listEvents, createEvent, searchDrive]

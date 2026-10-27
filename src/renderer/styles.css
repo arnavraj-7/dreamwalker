@@ -572,29 +572,65 @@ kbd {
 .ptt-on {
   box-shadow: 0 0 0 5px var(--accWash);
 }
+/* Stop: same size and shape as the mic button beside it, so the pair reads as one control. A soft ring
+   pulses while it can stop something; red only on the square, and as a fill on hover. */
 .stop-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--err);
-  background: transparent;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--line3);
+  background: var(--sunk);
   color: var(--err);
-  font: 600 13px var(--sans);
   flex-shrink: 0;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.stop-btn::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border: 2px solid var(--err);
+  opacity: 0;
+  animation: stop-ring 1.6s ease-out infinite;
+  pointer-events: none;
 }
 .stop-btn:hover {
   background: var(--err);
+  border-color: var(--err);
   color: var(--bg);
 }
+.stop-btn:focus-visible {
+  outline: 2px solid var(--err);
+  outline-offset: 2px;
+}
 .stop-square {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
   background: currentColor;
+}
+.command-hero .stop-btn {
+  width: 38px;
+  height: 38px;
+}
+.command-compact .stop-btn {
+  width: 30px;
+  height: 30px;
+}
+.command-compact .stop-square {
+  width: 9px;
+  height: 9px;
+}
+@keyframes stop-ring {
+  0% { opacity: 0.55; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stop-btn::after { animation: none; }
 }
 
 /* ── Now rail ── */

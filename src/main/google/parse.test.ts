@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { eventSummary, header, looksLikeEmail, messageText, mimeEmail, rawEmail } from './parse.ts'
+import { attachmentParts, eventSummary, header, looksLikeEmail, messageText, mimeEmail, rawEmail } from './parse.ts'
 
 const b64 = (s: string): string => Buffer.from(s, 'utf8').toString('base64url')
 
@@ -43,6 +43,18 @@ describe('Google parsing', () => {
     assert.ok(b64.split('\r\n').every((l) => l.length <= 76))
     assert.deepEqual(Buffer.from(b64.replace(/\r\n/g, ''), 'base64'), data)
     assert.ok(mime.trimEnd().endsWith(`--${boundary}--`))
+  })
+
+  it('finds the attachments in an email, however deep they are', () => {
+    const payload = {
+      mimeType: 'multipart/mixed',
+      parts: [
+        { mimeType: 'multipart/alternative', parts: [{ mimeType: 'text/plain', body: { data: 'aGk' } }] },
+        { mimeType: 'application/pdf', filename: 'Certificate.pdf', body: { attachmentId: 'A1', size: 120000 } },
+        { mimeType: 'image/png', filename: '', body: { attachmentId: 'inline' } } // no name: not a file the user sees
+      ]
+    }
+    assert.deepEqual(attachmentParts(payload), [{ name: 'Certificate.pdf', id: 'A1', size: 120000 }])
   })
 
   it('checks email addresses', () => {
