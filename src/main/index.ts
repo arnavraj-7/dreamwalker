@@ -1051,7 +1051,12 @@ async function runTool(call: ToolCallRequest, ctx: RequestContext = current, pro
   // is a RETRY (Gemini repeating itself, or a replay after a dropped connection, with a new call id).
   // Return what happened the first time; don't do it again, and don't ask again either. If something
   // else happened in between (look → tap → look), it's a NEW action (RetryGuard). Reads are exempt.
-  const { key: idemKey, retry } = ctx.guard.check(idempotencyKey(ctx.id, tool.name, call.args), tool.effect === 'read')
+  const { key: idemKey, retry } = ctx.guard.check(
+    idempotencyKey(ctx.id, tool.name, call.args),
+    // A screenshot only shows Gemini the screen, and the screen changes: a repeat must take a NEW picture.
+    // Blocking it as "already done" sent no image, and Gemini asked again and again (2026-10-27).
+    tool.effect === 'read' || tool.modelOnly === true
+  )
   const earlier = retry && idemKey ? ledger?.findByIdemKey(idemKey) : null
   if (earlier) {
     console.log(`[exactly-once] ${tool.name}: already ${earlier.status} in this request (ledger #${earlier.id}), not repeating`)

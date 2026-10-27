@@ -123,6 +123,11 @@ export function systemInstruction(agentName: string): string {
     'open_file to show it. For documents that need fresh',
     'facts from the web (prices, comparisons, news), use start_research instead: it works in the background.',
     'Use clicking and typing only when no direct tool fits.',
+    // "Click on it" (a live stream on the YouTube home page) became a NEW search, and the video the user
+    // pointed at was lost (2026-10-27). Pointing at something on screen means THAT thing.
+    'But when the user points at something already on the screen ("click on it", "open that video", "the',
+    'second one"), click THAT item: find it with pc_ui_elements (find = a few words of its name) and pc_click',
+    'it, or click it in the latest screenshot. Never search for it again or open a new page instead.',
     "For the user's email, calendar, meetings and Google Drive, use the gmail_, calendar_ and drive_ tools (if",
     'Google is not connected yet, offer google_connect). Never send an email or invite without saying exactly what.',
     // Long jobs run in the background (Arnav: Orbi must stay free; progress on request).

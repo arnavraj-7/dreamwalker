@@ -40,7 +40,8 @@ export const playYoutube: Tool = {
     'Only when the user asks to play; for "search YouTube for X" open the results page with open_url instead. ' +
     'It finds the top result and opens that video, which starts playing. `browser` optional (chrome, edge...). ' +
     'Use it instead of searching and clicking, also for "play the first video" when YouTube results are open: ' +
-    'pass that search and tab: "current". Its `url` is the exact video (give it to phone_youtube for "on my phone too").',
+    'pass that search and tab: "current". Not for a video the user points at on screen ("click on it"): click ' +
+    'that one with pc_ui_elements + pc_click. Its `url` is the exact video (give it to phone_youtube for "on my phone too").',
   parameters: {
     type: 'object',
     properties: {
