@@ -1,7 +1,7 @@
 // MAIN PROCESS: the Node.js side. Exactly one of these runs. It has full OS access.
 // Later the Link, Brain, Gatekeeper, Hands and Ledger all live under src/main/.
 
-import { app, BrowserWindow, clipboard, ipcMain, session } from 'electron'
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -745,6 +745,7 @@ let current: RequestContext = newRequest('voice')
 // Presence = what the face shows, worked out in main/presence.ts from everything below. Pushed only
 // when it changes, to the main window and the companion.
 let muted = false
+const TALK_SHORTCUT = 'CommandOrControl+Shift+Space'
 let activeTool: string | null = null
 let asking: { action: string; irreversible: boolean } | null = null
 let askQueue: Promise<unknown> = Promise.resolve() // confirmations, one at a time (runTool)
@@ -1554,6 +1555,13 @@ app.whenReady().then(() => {
   phone.start()
   companion.setVisible(settings.companion)
 
+  // Talk from ANY app. Space only works while our window has focus; after Orbi opens a web page the
+  // browser has it, and Space paused the video instead (2026-10-27). One tap = start talking, like
+  // the Start button; a tap while it speaks stops it, like saying its name.
+  if (!globalShortcut.register(TALK_SHORTCUT, () => { if (!muted) brain.wakeNow() })) {
+    console.warn(`[shortcut] ${TALK_SHORTCUT} is taken by another app`)
+  }
+
   // Connect at startup, not on first use: connecting costs ~1.7 s (docs/research/latency-probe.md), and we'd rather pay
   // that once here than make the user wait for it on every first request.
   // Memory for a NEW conversation (instant; main/memory.ts). A resumed one keeps its own memory.
@@ -1573,6 +1581,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {})
 app.on('before-quit', () => {
   quitting = true
+  globalShortcut.unregisterAll()
   tasks.cancelAll() // never leave background processes running after Dreamwalker quits
   stopInputHost()
   phone.stop()
