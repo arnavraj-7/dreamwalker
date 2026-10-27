@@ -64,6 +64,7 @@ export class Brain {
 
   // A turn that asks for a tool also ends with its own turnComplete; skip those (docs/build-log/03-tools.md).
   private toolTurnsOpen = 0
+  private modelActing = false // Gemini has asked for a tool in this request: the user's turn is really over
   // Gemini finished GENERATING the current answer. Its turnComplete can come much later (it waits
   // until the audio would have finished playing), so after a reconnect this is the reliable signal
   // that nothing more is coming. Tool turns send their own generationComplete; skip those too.
@@ -202,6 +203,7 @@ export class Brain {
   }
 
   modelToolCalls(): void {
+    this.modelActing = true
     this.toolTurnsOpen++
     this.toolGenerationsOpen++
     this.clearTimers()
@@ -308,7 +310,10 @@ export class Brain {
 
   private micGoesToModel(): boolean {
     if (this.pushToTalk) return true
-    if (this.current === 'thinking' && this.opts.micHeldWhileThinking?.() === true) return false
+    // Only once Gemini is acting on the request. "Thinking" alone is OUR guess (0.9 s without new words),
+    // and a pause mid-sentence while a video played cut the mic: Gemini heard silence and answered half a
+    // request (2026-10-27).
+    if (this.current === 'thinking' && this.modelActing && this.opts.micHeldWhileThinking?.() === true) return false
     if (!this.conversation) return false
     // While it talks, its own voice comes back through the mic. Only keep sending if echo
     // cancellation is trusted to remove it; otherwise Gemini would "interrupt" itself.
@@ -340,6 +345,7 @@ export class Brain {
     this.generationDone = false
     this.toolGenerationsOpen = 0
     this.followUpOpen = false
+    this.modelActing = false
     this.hooks.replyStarted()
   }
 

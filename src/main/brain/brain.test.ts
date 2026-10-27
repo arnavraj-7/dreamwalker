@@ -404,6 +404,36 @@ describe('no follow-up window while another app plays sound', () => {
   })
 })
 
+describe('the mic while another app plays sound', () => {
+  it('a pause mid-sentence does not cut the mic; it is held once Gemini acts on the request', async () => {
+    let sent = 0
+    const brain = new Brain(
+      {
+        emitState: () => {},
+        sendMicToModel: () => sent++,
+        endMicToModel: () => {},
+        feedWakeWord: () => true,
+        resetWakeWord: () => {},
+        playToSpeaker: () => {},
+        stopSpeaker: () => {},
+        wakeCue: () => {},
+        replyStarted: () => {}
+      },
+      { noSpeechMs: 200, followUpMs: 200, thinkingAfterMs: 20, preRollChunks: 2, wakeWordEnabled: () => true, voiceBargeIn: () => true, micHeldWhileThinking: () => true }
+    )
+    brain.micChunk(chunk) // wake
+    brain.modelHeardUser()
+    await sleep(40) // the user pauses: we show "thinking"
+    assert.equal(brain.state, 'thinking')
+    const before = sent
+    brain.micChunk(chunk) // ...and goes on talking
+    assert.equal(sent, before + 1, 'still reaches Gemini')
+    brain.modelToolCalls() // Gemini acts: the request is over
+    brain.micChunk(chunk) // the video keeps playing
+    assert.equal(sent, before + 1, 'held back now')
+  })
+})
+
 describe('interrupting by name (voice barge-in off: its own voice never reaches Gemini)', () => {
   it('keeps its voice from Gemini, but "Hey Orbi" while it speaks stops it and starts a new turn', () => {
     const { brain, log } = setup({ bargeIn: false, wakeHits: [true, false, true] })
