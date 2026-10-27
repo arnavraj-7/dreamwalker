@@ -76,9 +76,10 @@ export const openUrl: Tool = {
   description:
     "Open a web page in a browser. Only https:// links are allowed. Use it when the user asks to open, show, " +
     'or go to a website. Pass browser to choose one (chrome, edge, firefox, brave); otherwise the default ' +
-    'browser is used. incognito: true opens a private window (incognito / InPrivate). To search, open a ' +
-    'search page, e.g. https://www.youtube.com/results?search_query=lofi+beats or ' +
-    'https://www.google.com/search?q=... (to PLAY a YouTube video, use play_youtube). ' +
+    'browser is used. incognito: true opens a private window (incognito / InPrivate). To search or look ' +
+    'something up ("open India vs New Zealand", "search for X"), open Google: https://www.google.com/search?q=... ' +
+    '(the default). Use YouTube only when the user says YouTube or video: ' +
+    'https://www.youtube.com/results?search_query=... (to PLAY a YouTube video, use play_youtube). ' +
     'tab: "current" loads it in the browser window the user sees (the one you opened last), for "in the same ' +
     'window / in it / there / on this window"; otherwise it opens a new tab or window. To SEARCH YouTube in a window ' +
     'that is open, use this with https://www.youtube.com/results?search_query=... and tab: "current" (not typing).',
