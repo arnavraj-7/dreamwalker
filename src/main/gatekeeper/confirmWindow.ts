@@ -111,7 +111,9 @@ export class ConfirmWindow {
         sandbox: true
       }
     })
-    win.setAlwaysOnTop(true, 'floating')
+    // 'screen-saver' is the top level: 'floating' sat under full-screen apps (a full-screen YouTube or
+    // browser), so the question was hidden and Orbi seemed not to answer (2026-10-27).
+    win.setAlwaysOnTop(true, 'screen-saver')
     win.setContentProtection(true) // not in screenshots, so the AI never sees (or aims at) it
     win.webContents.on('will-navigate', (e) => e.preventDefault())
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
