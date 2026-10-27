@@ -302,6 +302,7 @@ export function App() {
                 onSend={send}
                 onTalkStart={startTalking}
                 onTalkStop={stopTalking}
+                onStop={s.agentState === 'speaking' || s.agentState === 'thinking' ? () => window.dreamwalker.stopReply() : undefined}
               />
             </div>
             <NowRail s={s} undoable={undoable} undone={undone} onUndo={onUndo} onCancelTask={onCancelTask} />

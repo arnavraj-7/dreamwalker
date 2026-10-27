@@ -63,6 +63,7 @@ const api: DreamwalkerApi = {
   micStop: () => ipcRenderer.send(IPC.micStop),
   wakeNow: () => ipcRenderer.send(IPC.wakeNow),
   endConversation: () => ipcRenderer.send(IPC.endConversation),
+  stopReply: () => ipcRenderer.send(IPC.stopReply),
   onStartTalking: (callback) => subscribe(IPC.startTalking, callback)
 }
 

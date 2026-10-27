@@ -23,6 +23,7 @@ export interface CommandBarProps {
   onSend(text: string): void
   onTalkStart(): void
   onTalkStop(): void
+  onStop?(): void // shown while it thinks or speaks: silence the answer now
 }
 
 const PLACEHOLDER = {
@@ -73,6 +74,12 @@ export function CommandBar(props: CommandBarProps) {
           />
           {variant === 'timeline' && <code className="command-mic">{props.micLabel}</code>}
           {variant !== 'compact' && <kbd>{variant === 'hero' ? 'hold Space' : 'Space'}</kbd>}
+          {props.onStop && (
+            <button type="button" className="stop-btn" onClick={props.onStop} aria-label="Stop" title="Stop the answer">
+              <span className="stop-square" aria-hidden="true" />
+              {variant !== 'compact' && 'Stop'}
+            </button>
+          )}
           <button
             type="button"
             className={`ptt ${props.talking ? 'ptt-on' : ''}`}

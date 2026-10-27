@@ -572,6 +572,30 @@ kbd {
 .ptt-on {
   box-shadow: 0 0 0 5px var(--accWash);
 }
+.stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--err);
+  background: transparent;
+  color: var(--err);
+  font: 600 13px var(--sans);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.stop-btn:hover {
+  background: var(--err);
+  color: var(--bg);
+}
+.stop-square {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
 
 /* ── Now rail ── */
 .rail {

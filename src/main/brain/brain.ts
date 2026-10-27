@@ -64,6 +64,9 @@ export class Brain {
 
   // A turn that asks for a tool also ends with its own turnComplete; skip those (docs/build-log/03-tools.md).
   private toolTurnsOpen = 0
+  // Started with a key (Space, Ctrl+Shift+Space, Start), not the wake word: the user chose to talk, so
+  // follow-ups stay open even while a video plays (Arnav, 2026-10-27: he uses the key BECAUSE a video plays).
+  private byKey = false
   private modelActing = false // Gemini has asked for a tool in this request: the user's turn is really over
   // Gemini finished GENERATING the current answer. Its turnComplete can come much later (it waits
   // until the audio would have finished playing), so after a reconnect this is the reliable signal
@@ -104,6 +107,10 @@ export class Brain {
   }
 
   // The window after a reply, when the next words are taken without the wake word.
+  get followUpByKey(): boolean {
+    return this.byKey
+  }
+
   get inFollowUp(): boolean {
     return this.followUpOpen && this.conversation && this.current === 'listening' && !this.pushToTalk
   }
@@ -164,6 +171,7 @@ export class Brain {
   pushToTalkStop(): void {
     if (!this.pushToTalk) return
     this.pushToTalk = false
+    this.byKey = true
     // Releasing Space opens a hands-free conversation, like the wake word: after the answer it keeps
     // listening for a follow-up (Arnav, 2026-10-21: one tap, then just keep talking).
     this.conversation = true
@@ -178,6 +186,16 @@ export class Brain {
     if (this.pushToTalk || (this.conversation && this.current !== 'speaking')) return
     this.preRoll = [] // the last 0.5 s is from BEFORE the click: not part of the request
     this.wake()
+    this.byKey = true
+  }
+
+  // The Stop button: silence the answer NOW and end the conversation. What Gemini still sends of this
+  // answer is dropped (stale), and nothing is listened to until the user starts again.
+  stopNow(): void {
+    this.interruptReply()
+    this.clearTimers()
+    this.endConversation()
+    if (this.current !== 'idle') this.setState('idle')
   }
 
   // The same button while it listens: stop now, no follow-up. A reply already playing still finishes.
@@ -301,6 +319,7 @@ export class Brain {
   private wake(preRollChunks?: number): void {
     this.hooks.wakeCue()
     this.conversation = true
+    this.byKey = false
     this.startUserTurn()
     const send = preRollChunks === undefined ? this.preRoll : this.preRoll.slice(-preRollChunks)
     for (const chunk of send) this.hooks.sendMicToModel(chunk)
@@ -351,7 +370,7 @@ export class Brain {
 
   private maybeFinishReply(): void {
     if (!this.replySent || !this.playbackDrained) return
-    if (this.conversation && this.opts.followUpAllowed?.() === false) {
+    if (this.conversation && !this.byKey && this.opts.followUpAllowed?.() === false) {
       this.endConversation()
       this.setState('idle')
     } else if (this.conversation) {
@@ -371,6 +390,7 @@ export class Brain {
   private endConversation(): void {
     if (!this.conversation) return
     this.conversation = false
+    this.byKey = false
     this.hooks.endMicToModel()
     this.hooks.resetWakeWord()
     if (this.current === 'listening' || this.current === 'thinking') this.setState('idle')

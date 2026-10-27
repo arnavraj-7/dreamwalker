@@ -423,7 +423,7 @@ function watchFollowUp(): void {
     othersPlaying()
       .then((o) => {
         othersMakingSound = o.playing
-        if (o.playing && brain.inFollowUp) {
+        if (o.playing && brain.inFollowUp && !brain.followUpByKey) {
           console.log(`[follow-up] closed: ${o.app} is playing sound (peak ${o.peak.toFixed(2)})`)
           followUpWatch = false
           brain.endNow()
@@ -1474,6 +1474,7 @@ function registerIpc(): void {
     if (!muted) brain.wakeNow()
   })
   ipcMain.on(IPC.endConversation, () => brain.endNow())
+  ipcMain.on(IPC.stopReply, () => brain.stopNow())
   ipcMain.on(IPC.playbackDone, () => brain.playbackDone())
 
   // The companion may ask for exactly two things. Every IPC event carries its sender, so check it

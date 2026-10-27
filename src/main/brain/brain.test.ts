@@ -402,6 +402,54 @@ describe('no follow-up window while another app plays sound', () => {
     brain.playbackDone()
     assert.equal(brain.state, 'listening', 'quiet: follow-up window as usual')
   })
+
+  it('keeps the follow-up when the user started with a key (Space, the shortcut)', () => {
+    const brain = new Brain(
+      {
+        emitState: () => {},
+        sendMicToModel: () => {},
+        endMicToModel: () => {},
+        feedWakeWord: () => false,
+        resetWakeWord: () => {},
+        playToSpeaker: () => {},
+        stopSpeaker: () => {},
+        wakeCue: () => {},
+        replyStarted: () => {}
+      },
+      { noSpeechMs: 60, followUpMs: 80, thinkingAfterMs: 20, preRollChunks: 2, wakeWordEnabled: () => true, voiceBargeIn: () => true, followUpAllowed: () => false }
+    )
+    brain.wakeNow()
+    brain.modelHeardUser()
+    brain.modelAudio(chunk)
+    brain.modelTurnComplete()
+    brain.playbackDone()
+    assert.equal(brain.state, 'listening', 'media playing, but the user chose to talk: follow-up open')
+    assert.equal(brain.followUpByKey, true)
+    brain.pushToTalkStart()
+    brain.pushToTalkStop()
+    brain.modelAudio(chunk)
+    brain.modelTurnComplete()
+    brain.playbackDone()
+    assert.equal(brain.state, 'listening', 'hold-Space too')
+  })
+})
+
+describe('the Stop button', () => {
+  it('silences the answer at once, drops the rest of it, and ends the conversation', () => {
+    const { brain, log } = setup()
+    brain.wakeNow()
+    brain.modelHeardUser()
+    brain.modelAudio(chunk)
+    assert.equal(brain.state, 'speaking')
+    const stops = log.stops
+    brain.stopNow()
+    assert.equal(brain.state, 'idle')
+    assert.equal(log.stops, stops + 1, 'speaker stopped')
+    const played = log.played
+    brain.modelAudio(chunk) // the rest of that answer, still arriving
+    assert.equal(log.played, played, 'dropped')
+    assert.equal(brain.state, 'idle')
+  })
 })
 
 describe('the mic while another app plays sound', () => {

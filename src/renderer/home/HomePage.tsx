@@ -137,6 +137,7 @@ export function HomePage(props: HomeProps) {
       onSend={props.onSend}
       onTalkStart={props.onTalkStart}
       onTalkStop={props.onTalkStop}
+      onStop={s.agentState === 'speaking' || s.agentState === 'thinking' ? () => window.dreamwalker.stopReply() : undefined}
     />
   )
 

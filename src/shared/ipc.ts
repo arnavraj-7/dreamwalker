@@ -67,6 +67,7 @@ export const IPC = {
   micStop: 'mic:stop',
   wakeNow: 'mic:wake-now', // the Start button: a hands-free conversation, as if it heard its name
   endConversation: 'mic:end', // the same button while it listens: stop now
+  stopReply: 'mic:stop-reply', // the Stop button: silence the answer and end the conversation
   startTalking: 'mic:start-talking' // main → page: the tray / companion menu's "Start talking"
 } as const
 
@@ -394,5 +395,6 @@ export interface DreamwalkerApi {
   // The Start button: the same as hearing the wake word (it opens the mic itself if the wake word is off).
   wakeNow(): void
   endConversation(): void
+  stopReply(): void
   onStartTalking(callback: () => void): () => void
 }
