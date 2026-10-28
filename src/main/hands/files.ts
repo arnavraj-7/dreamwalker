@@ -14,6 +14,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { Tool } from './tool'
+import { findFiles } from './fuzzy'
 
 const FOLDERS = ['desktop', 'documents', 'downloads', 'pictures', 'music', 'videos'] as const
 const MAX_READ_BYTES = 1024 * 1024
@@ -165,6 +166,26 @@ export const readTextFile: Tool = {
       const text = buf.toString('utf8')
       return { ok: true as const, file, text: text.slice(0, MAX_READ_CHARS), truncated: text.length > MAX_READ_CHARS }
     })
+}
+
+// Save bytes in Downloads under a safe name, never overwriting ("photo (2).jpg"). Returns the real path.
+export async function saveInDownloads(name: string, data: Buffer): Promise<string> {
+  const clean = path.basename(name.replace(/\\/g, '/')).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(0, 150) || 'file'
+  const dot = clean.lastIndexOf('.')
+  const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, '']
+  for (let n = 1; n <= 50; n++) {
+    const file = await resolveInside(`Downloads/${n === 1 ? clean : `${stem} (${n})${ext}`}`, false)
+    try {
+      await fs.writeFile(file, data, { flag: 'wx' }) // wx = fail if it already exists
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue
+      throw err
+    }
+    const written = await fs.stat(file).catch(() => null)
+    if (!written || written.size !== data.length) throw new Error(`Saving ${clean} failed: the file in Downloads is incomplete.`)
+    return file
+  }
+  throw new Error(`Downloads already has 50 files called ${clean}.`)
 }
 
 // Undo for any tool that CREATED a file (text, Word, PowerPoint): even undo doesn't destroy, the file
@@ -346,7 +367,40 @@ export const deleteFile: Tool = {
     })
 }
 
-export const FILE_TOOLS: Tool[] = [listFolder, readTextFile, createTextFile, createFolder, openFile, moveFile, deleteFile]
+// FIND A FILE BY (ROUGHLY) ITS NAME: the search itself is findFiles (fuzzy.ts, testable without Electron).
+export const findFilesTool: Tool = {
+  name: 'find_files',
+  description:
+    "Find files by name anywhere in the user's folders (Desktop, Documents, Downloads, Pictures, Music, Videos), " +
+    'even if the name is misheard or only roughly remembered ("the DBMS assignment pdf", "my resume"). Returns the ' +
+    'best matches with full paths, newest first among equals. Use it before open_file, send_to_phone or move_file ' +
+    "when you don't know the exact path. Put a type in the query to narrow it (\"resume pdf\").",
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'What the file is called, roughly, e.g. "dbms assignment pdf"' },
+      folder: { type: 'string', description: 'Optional: only look here, e.g. "Downloads"' }
+    },
+    required: ['query']
+  },
+  risk: 'low',
+  effect: 'read',
+  untrustedOutput: true, // file names are outside text
+  run: (args) =>
+    guarded(async () => {
+      const query = typeof args.query === 'string' ? args.query.trim().slice(0, 200) : ''
+      if (!query) throw new Error('What should I look for?')
+      const within = typeof args.folder === 'string' && args.folder.trim() ? [await resolveInside(args.folder, true)] : (await roots()).map((r) => r.dir)
+      const hits = await findFiles(query, [...new Set(within)])
+      if (hits.length === 0) return { ok: false as const, error: `No file with a name like "${query}" in ${typeof args.folder === 'string' && args.folder.trim() ? args.folder : 'your folders'}.` }
+      return {
+        ok: true as const,
+        files: hits.map((h) => ({ path: h.path, size: sizeText(h.size), modified: new Date(h.mtime).toLocaleString('en-IN'), match: h.score >= 95 ? 'name contains it' : `close (${h.score}%)` }))
+      }
+    })
+}
+
+export const FILE_TOOLS: Tool[] = [listFolder, findFilesTool, readTextFile, createTextFile, createFolder, openFile, moveFile, deleteFile]
 
 // For the terminal tools: a folder inside the fence, or the home folder.
 export async function folderInside(input: unknown): Promise<string> {

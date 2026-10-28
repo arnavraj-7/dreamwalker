@@ -3,6 +3,7 @@
 import { shell } from 'electron'
 import os from 'node:os'
 import type { Tool } from './tool'
+import { fuzzyRank } from './fuzzy'
 import { batteryStatus, closeWindowTitled, navigateTop } from './pcinput'
 import {
   NOT_WINDOWS,
@@ -148,20 +149,10 @@ export const openUrl: Tool = {
   }
 }
 
-// Fuzzy match: exact, then starts-with, then contains (case-insensitive). Best first.
-function bestMatches<T>(items: T[], query: string, key: (t: T) => string): T[] {
-  const q = query.toLowerCase()
-  const score = (t: T): number => {
-    const k = key(t).toLowerCase()
-    if (k === q) return 3
-    if (k.startsWith(q)) return 2
-    return k.includes(q) ? 1 : 0
-  }
-  return items
-    .map((t) => ({ t, s: score(t) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s || key(a.t).length - key(b.t).length)
-    .map((x) => x.t)
+// Match what was said to names: exact, then starts-with, then contains (also ignoring spaces: "whats app"),
+// then fuzzy for misheard names ("spotfy"). Best first. See fuzzy.ts.
+function bestMatches<T>(items: T[], query: string, key: (t: T) => string, cutoff = 78): T[] {
+  return fuzzyRank(items, query, key, cutoff)
 }
 
 const APP_ALIASES: Record<string, string> = {
@@ -193,12 +184,18 @@ export const openApp: Tool = {
     const apps = await listStartApps()
     // What people say vs what the Start menu calls it ("VS Code" failed once, then worked as
     // "Visual Studio Code": a wasted round trip, 2026-10-19). Only used if the name itself matches nothing.
+    // Order: the name as said (exact / starts / contains), then the alias, and only then a fuzzy guess.
     let name = asked
-    let matches = bestMatches(apps, name, (a) => a.name)
+    let matches = bestMatches(apps, name, (a) => a.name, 95)
     const alias = APP_ALIASES[asked.toLowerCase()]
     if (matches.length === 0 && alias) {
       name = alias
+      matches = bestMatches(apps, name, (a) => a.name, 95)
+    }
+    if (matches.length === 0) {
+      name = asked
       matches = bestMatches(apps, name, (a) => a.name)
+      if (matches.length === 1) name = matches[0].name // a fuzzy hit: say what was really opened
     }
     if (matches.length === 0) return { ok: false, error: `No installed app called "${name}" was found.` }
     const exact = matches.filter((a) => a.name.toLowerCase() === name.toLowerCase())
@@ -260,7 +257,7 @@ const PROCESS_NAMES: Record<string, string> = {
 
 export async function findWindow(query: string): Promise<WindowInfo | string> {
   const windows = await listWindows()
-  const byTitle = bestMatches(windows, query, (w) => visible(w.title))
+  const byTitle = bestMatches(windows, query, (w) => visible(w.title), 85) // stricter: a wrong window could be closed
   const processName = PROCESS_NAMES[query.trim().toLowerCase()]
   const matches =
     byTitle.length > 0
