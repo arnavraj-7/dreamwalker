@@ -51,6 +51,7 @@ import { Ledger, type ActionSource } from './ledger/ledger'
 import { memoryInstruction, summarise, transcriptFor, type SavedSession } from './memory'
 import { faceFor, sourceWords } from './presence'
 import { claimsAction, HONESTY_NOTE } from './honesty'
+import { redactDeep } from './secrets'
 import { withTimeout } from './agent/retry'
 import { inProcessJob } from './agent/job'
 import { FunctionResponseScheduling } from '@google/genai'
@@ -1272,6 +1273,15 @@ async function runTool(call: ToolCallRequest, ctx: RequestContext = current, pro
     const outcome = asOutcome(await withTimeout(tool.run(call.args, { progress }), TOOL_LIMIT_MS, `${tool.name} took too long and was abandoned (no result)`))
     result = outcome.result
     attachments = outcome.attachments
+    // C3: keys, tokens and passwords in OUTSIDE content (a .env file, the clipboard, a page) are hidden
+    // here, before Gemini or the Ledger see them (main/secrets.ts).
+    if (tool.untrustedOutput) {
+      const scrubbed = redactDeep(result)
+      if (scrubbed.hidden.length > 0) {
+        console.log(`[secrets] hid ${scrubbed.hidden.length} in ${tool.name}'s result`)
+        result = { ...scrubbed.value, secretsHidden: `${scrubbed.hidden.length} (${[...new Set(scrubbed.hidden)].join(', ')}): hidden on this computer for safety; you never see them` } as ToolResult
+      }
+    }
     record(result.ok ? 'done' : 'failed', result, result.ok ? outcome.undo : null)
     undoable = result.ok && outcome.undo !== undefined && outcome.undo !== null
   } catch (err) {

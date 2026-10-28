@@ -27,8 +27,9 @@ audio).
 | Phone remote | Control the laptop from your phone, from anywhere: an installable web app talks to the laptop through our always-on relay. Type or say a command, get files sent to the phone, send files to the laptop, answer its questions there, stop it |
 | C1 Unknown apps | Windows UI Automation + screenshots + mouse and keyboard (PC), screenshot + tap (phone). Partial |
 | C2 Prompt injection | Outside content (web, email, files) switches on caution mode: every action needs a confirmation. Partial |
+| C3 Hiding secrets | API keys, tokens, private keys, passwords in config files and in links are replaced with "[hidden …]" on this computer before outside content (files, clipboard, web, email, screen text) reaches Gemini or the Ledger. Not in screenshots. Partial |
 
-Not built: A6 (screen watch), C3 (hiding passwords before they reach Gemini).
+Not built: A6 (screen watch).
 
 ## Phone remote
 
