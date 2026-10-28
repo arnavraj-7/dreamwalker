@@ -212,15 +212,17 @@ export function startPhoneBridge(opts: BridgeOptions): PhoneBridge {
         backoff = 1000
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
         let buf = ''
+        let from = 0 // where to look next: a 25 MB upload arrives in thousands of pieces
         for (;;) {
           const { value, done } = await reader.read()
           if (done) break
           lastData = Date.now()
           buf += value
           let end: number
-          while ((end = buf.indexOf('\n\n')) >= 0) {
+          while ((end = buf.indexOf('\n\n', from)) >= 0) {
             const block = buf.slice(0, end)
             buf = buf.slice(end + 2)
+            from = 0
             for (const line of block.split('\n')) {
               if (!line.startsWith('data: ')) continue
               try {
@@ -232,6 +234,7 @@ export function startPhoneBridge(opts: BridgeOptions): PhoneBridge {
               }
             }
           }
+          from = Math.max(0, buf.length - 1)
         }
       } catch (err) {
         if (!stopped) console.error(`[remote] relay: ${err instanceof Error ? err.message : String(err)}`)
@@ -268,8 +271,11 @@ export function startPhoneBridge(opts: BridgeOptions): PhoneBridge {
       const name = basename(absPath)
       const mime = MIME[extname(name).toLowerCase()] ?? 'application/octet-stream'
       const id = randomBytes(8).toString('hex')
-      files.set(id, { name, mime, buf })
-      setTimeout(() => files.delete(id), 30 * 60_000).unref()
+      // A copy for the local server only if a phone uses it: these can be 50 MB each.
+      if (clients.size > 0) {
+        files.set(id, { name, mime, buf })
+        setTimeout(() => files.delete(id), 30 * 60_000).unref()
+      }
       if (relay && status.relayOnline) {
         const res = await fetch(`${relay}/laptop/file?id=${id}&name=${encodeURIComponent(name)}`, {
           method: 'PUT',
@@ -285,18 +291,18 @@ export function startPhoneBridge(opts: BridgeOptions): PhoneBridge {
     askConfirm(summary, risk, signal, timeoutMs = 60_000) {
       const id = randomBytes(6).toString('hex')
       return new Promise<boolean>((resolve) => {
-        const settle = (approved: boolean): void => {
+        const settle = (approved: boolean, by: 'phone' | 'laptop' | 'timeout'): void => {
           if (!confirms.delete(id)) return // already answered (reply raced the timeout)
           clearTimeout(timer)
           signal?.removeEventListener('abort', onAbort)
-          push({ type: 'confirm-close', id, summary })
+          push({ type: 'confirm-close', id, summary, by })
           resolve(approved)
         }
-        const onAbort = (): void => settle(false) // answered on the laptop: close it on the phone
-        const timer = setTimeout(() => settle(false), timeoutMs)
+        const onAbort = (): void => settle(false, 'laptop') // answered on the laptop: close it on the phone
+        const timer = setTimeout(() => settle(false, 'timeout'), timeoutMs)
         timer.unref()
-        confirms.set(id, settle)
-        if (signal?.aborted) return settle(false)
+        confirms.set(id, (approved) => settle(approved, 'phone'))
+        if (signal?.aborted) return settle(false, 'laptop')
         signal?.addEventListener('abort', onAbort)
         push({ type: 'confirm', id, summary, risk })
       })

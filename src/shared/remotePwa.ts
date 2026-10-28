@@ -83,7 +83,7 @@ function connect(){if(es)es.close();es=new EventSource(q("/events"))
     if(m.type==="turn-end"){reply=null;return}
     if(m.type==="file-ready"){reply=null;row("file",'<a href="'+esc(q(m.url))+'" download="'+esc(m.name)+'">📎 '+esc(m.name)+(m.size?" ("+fmt(m.size)+")":"")+"</a>");return}
     if(m.type==="confirm"){askConfirm(m);return}
-    if(m.type==="confirm-close"){var el=$("c_"+m.id);if(el&&!el.dataset.answered){el.dataset.answered="1";el.textContent="⌛ no answer, so Orbi didn't do it: "+m.summary}return}
+    if(m.type==="confirm-close"){var el=$("c_"+m.id);if(el&&!el.dataset.answered){el.dataset.answered="1";el.textContent=(m.by==="laptop"?"✓ answered on the laptop: ":"⌛ no answer, so Orbi didn't do it: ")+m.summary}return}
     if(m.msg)row("ev",esc(m.msg))}}
 function fmt(n){return n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB"}
 function askConfirm(m){reply=null
@@ -94,7 +94,8 @@ function askConfirm(m){reply=null
     post("/confirm-reply",{id:m.id,approve:a}).catch(function(){d.textContent+=" (couldn't reach the laptop)"})}
   b[0].onclick=function(){answer(true)};b[1].onclick=function(){answer(false)}
   if(navigator.vibrate)navigator.vibrate([80,60,80])}
-function start(){$("gate").hidden=true;$("orbiwrap").hidden=false;log.hidden=false;$("f").hidden=false;$("chips").hidden=false;setVoice(voice);connect();startOrbi();chips();checkCode()}
+var started=false
+function start(){$("gate").hidden=true;$("orbiwrap").hidden=false;log.hidden=false;$("f").hidden=false;$("chips").hidden=false;setVoice(voice);connect();if(!started)startOrbi();started=true;chips();checkCode()}
 // A wrong or old pairing code only shows as a dead connection: ask once, and if it's refused, go back to pairing.
 function checkCode(){fetch(q("/ping")).then(function(r){if(r.ok)return r.json().then(function(j){if(j.unknown)row("ev","No laptop has used this pairing code lately. If Orbi is running, scan the QR code on the laptop again.")});if(r.status===401){if(es)es.close();store.set("dw.token","");token="";
   $("gate").hidden=false;$("orbiwrap").hidden=true;log.hidden=true;$("f").hidden=true;$("chips").hidden=true

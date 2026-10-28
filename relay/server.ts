@@ -18,6 +18,8 @@ const MAX_JSON = 2 * 1024 * 1024
 const MAX_FILE = 50 * 1024 * 1024
 const MAX_UPLOAD = 25 * 1024 * 1024
 const ROOM_FILES_MAX = 150 * 1024 * 1024
+const ALL_FILES_MAX = 300 * 1024 * 1024 // all rooms together: the VM allows the relay 600 MB
+const MAX_ROOMS = 500
 const FILE_TTL_MS = 30 * 60_000
 const HISTORY_MS = 30 * 60_000 // a phone that opens later still sees the last half hour (not audio)
 const PING_MS = 15_000
@@ -33,17 +35,19 @@ interface Room {
   laptopSeen: boolean // a laptop has used this code since the relay started
   phones: Set<ServerResponse>
   files: Map<string, StoredFile>
-  history: { at: number; json: string }[]
+  history: { at: number; seq: number; json: string }[]
   touched: number
 }
 
 const rooms = new Map<string, Room>()
+let seq = 0 // event ids, so a phone that reconnects only gets what it missed (EventSource's Last-Event-ID)
 const roomId = (token: string): string => createHash('sha256').update(token).digest('hex')
 
 function room(token: string): Room {
   const id = roomId(token)
   let r = rooms.get(id)
   if (!r) {
+    if (rooms.size >= MAX_ROOMS) throw new Error('busy')
     r = { laptop: null, laptopSeen: false, phones: new Set(), files: new Map(), history: [], touched: Date.now() }
     rooms.set(id, r)
   }
@@ -57,10 +61,12 @@ const sse = (res: ServerResponse, obj: unknown): void => {
 
 function toPhones(r: Room, obj: { type?: unknown; [k: string]: unknown }): void {
   const json = JSON.stringify(obj)
-  for (const p of r.phones) p.write(`data: ${json}\n\n`)
   // Keep what a phone opened later would want to see; never audio, never open questions.
-  if (obj.type === 'file-ready' || obj.type === 'event' || obj.type === 'reply' || obj.type === 'turn-end') {
-    r.history.push({ at: Date.now(), json })
+  const kept = obj.type === 'file-ready' || obj.type === 'event' || obj.type === 'reply' || obj.type === 'turn-end'
+  const line = kept ? `id: ${++seq}\ndata: ${json}\n\n` : `data: ${json}\n\n`
+  for (const p of r.phones) p.write(line)
+  if (kept) {
+    r.history.push({ at: Date.now(), seq, json })
     const cutoff = Date.now() - HISTORY_MS
     while (r.history.length > 300 || (r.history[0] && r.history[0].at < cutoff)) r.history.shift()
   }
@@ -189,6 +195,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return json(res, 200, { ok: true, phones: r.phones.size })
   }
   if (path === '/laptop/file' && req.method === 'PUT') {
+    if (!r.laptop) return json(res, 409, { ok: false, error: 'Only a connected laptop can send files.' })
     const id = url.searchParams.get('id') ?? ''
     const name = (url.searchParams.get('name') ?? 'file').replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 160)
     const mime = String(req.headers['content-type'] ?? '')
@@ -202,6 +209,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       total -= f.buf.length
       r.files.delete(k) // oldest first (Map keeps insertion order)
     }
+    trimAllFiles()
     return json(res, 200, { ok: true })
   }
 
@@ -214,7 +222,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     r.phones.add(res)
     openStream(req, res, () => r.phones.delete(res))
     sse(res, { type: 'laptop', online: !!r.laptop })
-    for (const h of r.history) res.write(`data: ${h.json}\n\n`)
+    // A reconnect (EventSource sends the last id it saw) gets only what it missed; a new page gets the last 30 min.
+    const after = Number(req.headers['last-event-id'] ?? 0) || 0
+    const cutoff = Date.now() - HISTORY_MS
+    for (const h of r.history) if (h.seq > after && h.at >= cutoff) res.write(`id: ${h.seq}\ndata: ${h.json}\n\n`)
     toLaptop(r, { type: 'phones', count: r.phones.size })
     return
   }
@@ -266,6 +277,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   json(res, 404, { ok: false, error: 'not found' })
 }
 
+// All rooms together stay under ALL_FILES_MAX: the oldest files anywhere go first.
+function trimAllFiles(): void {
+  const all: { r: Room; k: string; f: StoredFile }[] = []
+  for (const r of rooms.values()) for (const [k, f] of r.files) all.push({ r, k, f })
+  let total = all.reduce((n, x) => n + x.f.buf.length, 0)
+  for (const x of all.sort((a, b) => a.f.at - b.f.at)) {
+    if (total <= ALL_FILES_MAX) break
+    total -= x.f.buf.length
+    x.r.files.delete(x.k)
+  }
+}
+
 const uploads = new Map<string, (r: { ok: boolean; error?: string; saved?: string }) => void>()
 
 // Rooms nobody uses, and old files, go away.
@@ -281,7 +304,8 @@ setInterval(() => {
 export const server = createServer((req, res) => {
   handle(req, res).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
-    if (!res.headersSent) json(res, msg === 'too big' ? 413 : 400, { ok: false, error: msg === 'too big' ? 'Too big.' : 'Bad request.' })
+    const code = msg === 'too big' ? 413 : msg === 'busy' ? 503 : 400
+    if (!res.headersSent) json(res, code, { ok: false, error: code === 413 ? 'Too big.' : code === 503 ? 'The relay is busy.' : 'Bad request.' })
     else res.end()
   })
 })

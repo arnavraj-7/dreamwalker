@@ -115,7 +115,8 @@ describe('phone remote through the relay', () => {
     const card = await waitFor(() => p.events.find((e) => e.type === 'confirm' && e.summary === 'Delete notes.txt'), 'the question')
     await post('/confirm-reply', { id: card.id, approve: true })
     assert.equal(await asked, true)
-    await waitFor(() => p.events.find((e) => e.type === 'confirm-close' && e.id === card.id), 'the card to close')
+    const closed = await waitFor(() => p.events.find((e) => e.type === 'confirm-close' && e.id === card.id), 'the card to close')
+    assert.equal(closed.by, 'phone')
   })
 
   it('a confirmation answered on the laptop first closes the phone card, as a no', async () => {
@@ -124,7 +125,8 @@ describe('phone remote through the relay', () => {
     const card = await waitFor(() => p.events.find((e) => e.type === 'confirm' && e.summary === 'Send the email'), 'the question')
     ac.abort()
     assert.equal(await asked, false)
-    await waitFor(() => p.events.find((e) => e.type === 'confirm-close' && e.id === card.id), 'the card to close')
+    const closed = await waitFor(() => p.events.find((e) => e.type === 'confirm-close' && e.id === card.id), 'the card to close')
+    assert.equal(closed.by, 'laptop') // the phone says "answered on the laptop", not "Orbi didn't do it"
     await post('/confirm-reply', { id: card.id, approve: true }) // too late: ignored
   })
 
@@ -173,6 +175,39 @@ describe('phone remote through the relay', () => {
     assert.deepEqual(await (await fetch(q('/ping'))).json(), { ok: true, laptop: true, unknown: false })
     assert.equal((await fetch(q('/ping', 'W'.repeat(40)))).status, 200) // a valid-looking code: an empty room
     assert.equal((await fetch(q('/ping', 'bad'))).status, 401)
+  })
+
+  it('a phone that reconnects gets only what it missed, not the whole history again', async () => {
+    const read = async (headers: Record<string, string>): Promise<string> => {
+      const ac = new AbortController()
+      const res = await fetch(q('/events'), { headers, signal: ac.signal })
+      const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader()
+      let text = ''
+      const stop = setTimeout(() => ac.abort(), 400)
+      try {
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          text += value
+        }
+      } catch {
+        /* aborted */
+      }
+      clearTimeout(stop)
+      return text
+    }
+    const fresh = await read({})
+    const ids = [...fresh.matchAll(/^id: (\d+)$/gm)].map((m) => Number(m[1]))
+    assert.ok(ids.length > 5)
+    const last = Math.max(...ids)
+    assert.doesNotMatch(await read({ 'last-event-id': String(last) }), /"type":"reply"/)
+    assert.match(await read({ 'last-event-id': String(last - 1) }), new RegExp(`id: ${last}\n`))
+  })
+
+  it('only a connected laptop can put files on the relay', async () => {
+    const other = 'Y'.repeat(40)
+    const r = await fetch(`${base}/laptop/file?id=abcdef0123456789&name=x.txt&token=${other}`, { method: 'PUT', body: 'x' })
+    assert.equal(r.status, 409)
   })
 
   it('wrong, short or missing pairing codes are refused', async () => {
