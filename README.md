@@ -15,7 +15,7 @@ audio).
 |---|---|
 | B1 Wake word + live voice | Offline wake word for any agent name (sherpa-onnx), live voice through Gemini Live, idle / listening / thinking / speaking always shown |
 | B2 Interrupts | Talking over it stops the audio at once; old audio is dropped so it never answers a stale question |
-| B3 Tools | 60+ tools (files, apps, windows, volume, clipboard, shell, web search, documents, YouTube, weather, phone, Google), each with a risk level and per-tool allow / ask / deny |
+| B3 Tools | 70+ tools (files, apps, windows, volume, clipboard, shell, web search, documents, YouTube, weather, phone, Google), each with a risk level and per-tool allow / ask / deny |
 | B4 Confirmations, ledger, undo | Risky actions ask first (window + spoken yes/no); every action goes in a SQLite ledger; "undo that" works even after a restart; irreversible actions say so before they run |
 | B5 Screen | Screenshots on request, and Gemini reasons about what it sees |
 | B6 Reconnects | Session resumption + an outbox, so a dropped connection loses nothing and repeats nothing |
