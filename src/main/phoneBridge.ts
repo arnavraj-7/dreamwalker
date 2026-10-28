@@ -365,7 +365,8 @@ export function startPhoneBridge(opts: BridgeOptions): PhoneBridge {
       res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'max-age=86400' })
       return void res.end(PWA_ICON)
     }
-    if (!tokenOk(given)) return reply(res, 401, { ok: false, error: 'bad token' })
+    if (!tokenOk(given)) return reply(res, 401, { ok: false, error: 'Wrong pairing code. Scan the QR code on the laptop again.' })
+    if (p === '/ping') return reply(res, 200, { ok: true, laptop: true })
 
     if (p === '/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })

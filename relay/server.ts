@@ -30,6 +30,7 @@ interface StoredFile {
 }
 interface Room {
   laptop: ServerResponse | null
+  laptopSeen: boolean // a laptop has used this code since the relay started
   phones: Set<ServerResponse>
   files: Map<string, StoredFile>
   history: { at: number; json: string }[]
@@ -43,7 +44,7 @@ function room(token: string): Room {
   const id = roomId(token)
   let r = rooms.get(id)
   if (!r) {
-    r = { laptop: null, phones: new Set(), files: new Map(), history: [], touched: Date.now() }
+    r = { laptop: null, laptopSeen: false, phones: new Set(), files: new Map(), history: [], touched: Date.now() }
     rooms.set(id, r)
   }
   r.touched = Date.now()
@@ -170,6 +171,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/laptop' && req.method === 'GET') {
     const old = r.laptop
     r.laptop = res
+    r.laptopSeen = true
     old?.end() // a newer connection from the laptop replaces the old one
     openStream(req, res, () => {
       if (r.laptop !== res) return
@@ -204,6 +206,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
 
   // ── The phone's side ──
+  // "Is my code right?" A code no laptop has used for minutes (the relay was up all along) is likely an old one.
+  if (path === '/ping' && req.method === 'GET') {
+    return json(res, 200, { ok: true, laptop: !!r.laptop, unknown: !r.laptopSeen && process.uptime() > 180 })
+  }
   if (path === '/events' && req.method === 'GET') {
     r.phones.add(res)
     openStream(req, res, () => r.phones.delete(res))

@@ -169,6 +169,12 @@ describe('phone remote through the relay', () => {
     late.close()
   })
 
+  it('the phone can check its pairing code', async () => {
+    assert.deepEqual(await (await fetch(q('/ping'))).json(), { ok: true, laptop: true, unknown: false })
+    assert.equal((await fetch(q('/ping', 'W'.repeat(40)))).status, 200) // a valid-looking code: an empty room
+    assert.equal((await fetch(q('/ping', 'bad'))).status, 401)
+  })
+
   it('wrong, short or missing pairing codes are refused', async () => {
     assert.equal((await post('/command', { text: 'x' }, 'short')).status, 401)
     assert.equal((await fetch(`${base}/events`)).status, 401)

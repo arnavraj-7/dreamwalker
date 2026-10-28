@@ -94,7 +94,11 @@ function askConfirm(m){reply=null
     post("/confirm-reply",{id:m.id,approve:a}).catch(function(){d.textContent+=" (couldn't reach the laptop)"})}
   b[0].onclick=function(){answer(true)};b[1].onclick=function(){answer(false)}
   if(navigator.vibrate)navigator.vibrate([80,60,80])}
-function start(){$("gate").hidden=true;$("orbiwrap").hidden=false;log.hidden=false;$("f").hidden=false;$("chips").hidden=false;setVoice(voice);connect();startOrbi();chips()}
+function start(){$("gate").hidden=true;$("orbiwrap").hidden=false;log.hidden=false;$("f").hidden=false;$("chips").hidden=false;setVoice(voice);connect();startOrbi();chips();checkCode()}
+// A wrong or old pairing code only shows as a dead connection: ask once, and if it's refused, go back to pairing.
+function checkCode(){fetch(q("/ping")).then(function(r){if(r.ok)return r.json().then(function(j){if(j.unknown)row("ev","No laptop has used this pairing code lately. If Orbi is running, scan the QR code on the laptop again.")});if(r.status===401){if(es)es.close();store.set("dw.token","");token="";
+  $("gate").hidden=false;$("orbiwrap").hidden=true;log.hidden=true;$("f").hidden=true;$("chips").hidden=true
+  $("tok").value="";$("tok").placeholder="that code was wrong: scan the QR code again"}}).catch(function(){})}
 $("pair").onclick=function(){var t=$("tok").value.trim();var mm=/t=([A-Za-z0-9_-]+)/.exec(t);if(mm)t=mm[1];if(!t)return;token=t;store.set("dw.token",t);start()}
 var QUICK=["Open Docker Desktop","Send me the newest file in my Downloads","What's open on my laptop?","Take a screenshot and send it to me","Lock my laptop"]
 function chips(){var c=$("chips");c.innerHTML="";QUICK.forEach(function(t){var b=document.createElement("button");b.type="button";b.textContent=t;b.onclick=function(){sendCmd(t)};c.appendChild(b)})}
