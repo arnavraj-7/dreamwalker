@@ -25,6 +25,7 @@ import {
   shQuote,
   type Contact
 } from '../phone/parse'
+import { remoteContacts } from '../remoteContacts'
 import { folderInside, resolveInside } from './files'
 import type { Tool } from './tool'
 import { topVideo } from './youtube'
@@ -66,9 +67,12 @@ export function phoneTools(link: PhoneLink): Tool[] {
       return { name: number, number }
     }
     // A real phone had 4016 numbers: allow a big answer (it stays in memory; only the match is used).
-    const all = parseContacts(
-      await shell(serial, 'content query --uri content://com.android.contacts/data/phones --projection display_name:data1', { maxOutputBytes: 8 * 1024 * 1024 })
-    )
+    const all = [
+      ...parseContacts(
+        await shell(serial, 'content query --uri content://com.android.contacts/data/phones --projection display_name:data1', { maxOutputBytes: 8 * 1024 * 1024 })
+      ),
+      ...remoteContacts() // contacts the user shared from their phone via the PWA (kept on this computer)
+    ]
     const hits = findContacts(all, to)
     if (hits.length === 0) throw new Error(`There's no contact called "${to}" on the phone.`)
     const names = [...new Set(hits.map((h) => h.name))]
@@ -414,7 +418,9 @@ export function phoneTools(link: PhoneLink): Tool[] {
         for (let i = 0; i < 10; i++) {
           await sleep(500)
           const st = /mCallState=(\d)/.exec(await shell(serial, "dumpsys telephony.registry | grep -m1 'mCallState='"))?.[1]
-          if (st === '2' || st === '1') return { ok: true, calling: c.name, number: c.number, verified: true }
+          // Privacy: the model only needs to know WHO was called, never the real number. Contacts are
+          // matched locally; the number stays on this computer (and goes only to the phone to dial).
+          if (st === '2' || st === '1') return { ok: true, calling: c.name, verified: true }
         }
         return { ok: false, error: 'I asked the phone to call, but it never started a call.' }
       } catch (err) {

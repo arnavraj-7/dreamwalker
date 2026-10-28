@@ -59,6 +59,10 @@ describe('reading adb output', () => {
     assert.deepEqual(findContacts(all, 'rahul').map((c) => c.name), ['Rahul Sharma'])
     assert.deepEqual(findContacts(all, 'Riya').map((c) => c.number), ['98100 00000'])
     assert.equal(findContacts(all, 'nobody').length, 0)
+    // fuzzy fallback: speech-to-text slipped a letter, still finds the right contact
+    assert.deepEqual(findContacts(all, 'rahil').map((c) => c.name), ['Rahul Sharma'])
+    assert.deepEqual(findContacts(all, 'riua').map((c) => c.name), ['Riya'])
+    assert.equal(findContacts(all, 'zzzz').length, 0) // nothing close = no match
   })
 
   it('numbers: only real-looking ones', () => {

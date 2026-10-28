@@ -108,6 +108,38 @@ export function parseContacts(out: string): Contact[] {
 
 // Best contact match for a spoken name: exact, then starts-with, then contains (case-insensitive).
 // Same name twice with the same number counts once.
+// Edit distance (Levenshtein): the fewest single-character insert/delete/replace steps from a to b.
+function editDistance(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  if (!m) return n
+  if (!n) return m
+  let prev = Array.from({ length: n + 1 }, (_, i) => i)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    prev = cur
+  }
+  return prev[n]
+}
+
+const normName = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+// 0..1 similarity of a spoken name to a contact, best over the whole name AND each word — so "arnaw"
+// still finds "Arnav Raj" and "rahil" finds "Rahul Sharma" when speech-to-text slips a letter.
+export function nameScore(name: string, q: string): number {
+  const nn = normName(name)
+  const nq = normName(q)
+  if (!nn || !nq) return 0
+  let best = 0
+  for (const part of [nn, ...nn.split(' ')]) {
+    if (part) best = Math.max(best, 1 - editDistance(part, nq) / Math.max(part.length, nq.length))
+  }
+  return best
+}
+
 export function findContacts(all: Contact[], query: string): Contact[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
@@ -116,7 +148,15 @@ export function findContacts(all: Contact[], query: string): Contact[] {
   if (exact.length) return unique(exact)
   const starts = all.filter((c) => c.name.toLowerCase().startsWith(q))
   if (starts.length) return unique(starts)
-  return unique(all.filter((c) => c.name.toLowerCase().includes(q)))
+  const has = all.filter((c) => c.name.toLowerCase().includes(q))
+  if (has.length) return unique(has)
+  // Fuzzy fallback: the name was misheard. Keep close matches (≥ 0.7), best first. The caller already
+  // handles "several names match" by asking which — fuzzy just widens what counts as a match.
+  const scored = all
+    .map((c) => ({ c, s: nameScore(c.name, q) }))
+    .filter((x) => x.s >= 0.7)
+    .sort((a, b) => b.s - a.s)
+  return unique(scored.map((x) => x.c))
 }
 
 export const digits = (n: string): string => n.replace(/[^\d+]/g, '')

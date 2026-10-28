@@ -29,6 +29,8 @@ import { Brain } from './brain/brain'
 import { GEMINI } from './config'
 import { Confirmer, type Answer, type ConfirmRequest } from './gatekeeper/confirm'
 import { ConfirmWindow } from './gatekeeper/confirmWindow'
+import { startPhoneBridge, type PhoneBridge } from './phoneBridge'
+import { setRemoteContacts } from './remoteContacts'
 import { coveredByGrant, decide } from './gatekeeper/gatekeeper'
 import { allTools, findTool, registerTools, toolDeclarations } from './hands'
 import { ledgerTools } from './hands/ledgerTools'
@@ -214,7 +216,10 @@ function send(channel: string, payload: unknown): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
 }
 const emitLinkStatus = (update: LinkStatusUpdate): void => send(IPC.linkStatus, update)
-const emitToolActivity = (activity: ToolActivity): void => send(IPC.toolActivity, activity)
+const emitToolActivity = (activity: ToolActivity): void => {
+  send(IPC.toolActivity, activity)
+  remote?.emit({ type: 'event', msg: `${activity.name}: ${activity.status}` })
+}
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 // ── Settings + wake word ────────────────────────────────────────────────────────────────────
@@ -347,8 +352,14 @@ const brain = new Brain(
     // Through the noise gate: the spotter only runs around sound (main/wake/gate.ts).
     feedWakeWord: (pcm) => wakeGate.push(pcm).some((chunk) => wake?.feed(chunk) ?? false),
     resetWakeWord: () => wake?.reset(),
-    playToSpeaker: (pcm) => send(IPC.audioChunk, pcm),
-    stopSpeaker: () => send(IPC.audioInterrupted, null),
+    playToSpeaker: (pcm) => {
+      send(IPC.audioChunk, pcm)
+      if (remote?.commandActive) remote.sendAudio(pcm) // Orbi's voice, to the phone, in Orbi's voice
+    },
+    stopSpeaker: () => {
+      send(IPC.audioInterrupted, null)
+      remote?.stopAudio()
+    },
     wakeCue: () => {
       console.log(`[wake] heard "${wakeStatus.phrase}"`)
       send(IPC.woke, null)
@@ -852,6 +863,7 @@ function refreshPresence(): void {
   lastPresence = json
   send(IPC.presence, presence)
   companion.setPresence(presence)
+  remote?.emit({ type: 'presence', presence }) // drive the portable Orbi on the phone
 }
 
 // ── Watchdog: never stuck on "thinking" ──────────────────────────────────────────────────────────
@@ -893,6 +905,19 @@ function stalled(): void {
   timeline.net('Gemini stopped answering, so Dreamwalker stopped waiting. Ask again.')
 }
 
+// The phone bridge (remote control). Started with the IPC handlers below, once link + brain exist.
+// Named `remote` because `phone` is already the connected-device PhoneLink (above).
+let remote: PhoneBridge | undefined
+// A tool the phone-driven agent just ran that SAVED a file (a .pptx say) → hand it to the phone.
+function offerToPhone(r: ToolCallResult): void {
+  const made = (r.response as { created?: unknown }).created
+  if (remote?.commandActive && r.response.ok !== false && typeof made === 'string') {
+    // Stays active for the whole turn: a backgrounded deck finishes AFTER the spoken reply, and
+    // `commandActive` means "the phone is the active controller" until its next command resets it.
+    void remote.offerFile(made).catch(() => {})
+  }
+}
+
 // Every confirmation goes through here, so the face shows "needs you" and the timeline records it.
 const CONFIRM_TITLE = 'Dreamwalker needs your OK' // the dialog's title (gatekeeper/confirm.ts); Home's "Review" finds it by this
 let askingParented = false // was the dialog attached to the main window (then focusing the window shows it)?
@@ -903,7 +928,11 @@ async function askUser(id: string, req: ConfirmRequest, meta: { tool?: string; r
   answers?.reset() // only what's said AFTER the question counts
   refreshPresence()
   try {
-    const reply = await confirmer.ask({ ...req, tool: meta.tool, risk: meta.risk }, mainWindow?.isVisible() ? mainWindow : null)
+    const onLaptop = confirmer.ask({ ...req, tool: meta.tool, risk: meta.risk }, mainWindow?.isVisible() ? mainWindow : null)
+    // A phone-driven request has no one at the laptop, so also ask on the phone — first answer wins.
+    const reply = await (remote?.commandActive
+      ? Promise.race([onLaptop, remote.askConfirm(req.action, meta.risk ?? 'high').then((ok): Answer => (ok ? 'yes' : 'no'))])
+      : onLaptop)
     timeline.confirmAnswered(id, reply)
     return reply
   } finally {
@@ -969,6 +998,7 @@ function startBackgroundCall(call: ToolCallRequest): void {
       lastBackgroundAt = Date.now()
     })
     link.sendToolResults([{ ...result, scheduling: FunctionResponseScheduling.WHEN_IDLE }])
+    offerToPhone(result) // a backgrounded create_document is how a deck gets back to the phone
     const ok = result.response.ok !== false
     j.say(ok ? 'Done' : `Failed: ${String(result.response.error ?? 'unknown error').slice(0, 160)}`)
     if (!ok) throw new Error(String(result.response.error ?? 'failed'))
@@ -995,6 +1025,7 @@ function handleToolCalls(calls: ToolCallRequest[]): Promise<void> {
     const results: ToolCallResult[] = []
     for (const call of now) results.push(await runTool(call))
     link.sendToolResults(results) // queued in the outbox if we're offline (B6)
+    for (const r of results) offerToPhone(r)
     expectReply()
   }
   toolQueue = toolQueue.then(run, run)
@@ -1376,7 +1407,9 @@ function registerIpc(): void {
     ledger?.recent(typeof limit === 'number' && limit > 0 && limit <= 200 ? Math.floor(limit) : 50) ?? []
   )
 
-  ipcMain.handle(IPC.sayText, (_event, text: unknown) => {
+  // Inject a user text turn — from the UI's Say box OR a phone command — and let the full agent run
+  // it: all tools, the gatekeeper, the ledger, exactly as if it had been spoken.
+  function injectText(text: unknown): void {
     // Never trust what comes over the bridge, even from our own UI (see docs/build-log/01-phase0-skeleton.md).
     if (typeof text !== 'string' || text.trim() === '' || text.length > 2000) {
       throw new Error('sayText needs 1–2000 characters of text')
@@ -1394,6 +1427,22 @@ function registerIpc(): void {
     } catch (err) {
       brain.requestFailed()
       throw err // reaches the renderer as a rejected promise
+    }
+  }
+
+  ipcMain.handle(IPC.sayText, (_event, text: unknown) => injectText(text))
+
+  // Remote control from the phone (M7), over a Cloudflare tunnel — no ADB, no same network.
+  remote = startPhoneBridge({
+    onContacts: (list) => setRemoteContacts(list), // contacts the user shares from the phone (local only)
+    onCommand: (text) => {
+      remote?.emit({ type: 'event', msg: `on it: ${text}` })
+      try {
+        injectText(text)
+      } catch (err) {
+        if (remote) remote.commandActive = false
+        remote?.emit({ type: 'event', msg: `couldn't: ${errorMessage(err)}` })
+      }
     }
   })
 
