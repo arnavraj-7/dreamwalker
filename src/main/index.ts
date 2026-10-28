@@ -2,7 +2,7 @@
 // Later the Link, Brain, Gatekeeper, Hands and Ledger all live under src/main/.
 
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, session } from 'electron'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import os from 'node:os'
@@ -23,13 +23,14 @@ import {
   type ToolActivity,
   type ToolInfo,
   type TranscriptPiece,
+  type RemoteInfo,
   type WakeStatus
 } from '../shared/ipc'
 import { Brain } from './brain/brain'
-import { GEMINI } from './config'
+import { GEMINI, REMOTE } from './config'
 import { Confirmer, type Answer, type ConfirmRequest } from './gatekeeper/confirm'
 import { ConfirmWindow } from './gatekeeper/confirmWindow'
-import { startPhoneBridge, type PhoneBridge } from './phoneBridge'
+import { startPhoneBridge, type PhoneBridge, type RemoteStatus } from './phoneBridge'
 import { setRemoteContacts } from './remoteContacts'
 import { coveredByGrant, decide } from './gatekeeper/gatekeeper'
 import { allTools, findTool, registerTools, toolDeclarations } from './hands'
@@ -38,6 +39,8 @@ import { startPowerShell } from './hands/process'
 import { focusWindowTitled, isWindows } from './hands/windows'
 import { taskTools } from './hands/taskTools'
 import { phoneTools } from './hands/phone'
+import { remoteTools } from './hands/remote'
+import { saveInDownloads } from './hands/files'
 import { researchTools } from './agent/research'
 import { othersPlaying, stopInputHost } from './hands/pcinput'
 import { PhoneLink } from './phone/link'
@@ -323,6 +326,8 @@ const brain = new Brain(
       console.log(`[state] ${state}`)
       send(IPC.agentState, state)
       if (state === 'idle') setTimeout(() => announceFinishedTasks(), 400)
+      if (state === 'idle' && remote?.commandActive) remote.emit({ type: 'turn-end' })
+      if ((state === 'idle' || state === 'listening') && heldCommand) setTimeout(releaseCommand, 0) // answered: now the next one
       if (state === 'thinking') heardUntil ||= Date.now() // it noticed you stopped talking
       if (state === 'thinking') expectReply()
       // Before it answers, check whether another app is making sound (it decides the follow-up window).
@@ -361,6 +366,7 @@ const brain = new Brain(
       remote?.stopAudio()
     },
     wakeCue: () => {
+      if (remote) remote.commandActive = false // someone is at the laptop: answers stay here
       console.log(`[wake] heard "${wakeStatus.phrase}"`)
       send(IPC.woke, null)
     },
@@ -394,6 +400,7 @@ registerTools(ledgerTools({ ledger: () => ledger, findTool }))
 // The link finds the phone (USB or wireless debugging) and checks it every 30 s; the tools use it.
 const phone = new PhoneLink((status) => send(IPC.phoneStatus, status))
 registerTools(phoneTools(phone))
+registerTools(remoteTools(() => remote))
 
 // ── Background tasks (A2, src/main/tasks/tasks.ts) ──────────────────────────────────────────
 // Each task is a PowerShell process streaming its output line by line (ForEach-Object passes each line
@@ -588,6 +595,8 @@ const link = new Link(
       } else {
         replySoFar += text
         modelActive()
+        // The answer, as text, on the phone; not the rest of one that was stopped or talked over.
+        if (remote?.commandActive && !brain.discardingReply) remote.emit({ type: 'reply', text })
       }
       timeline.heard(role, text)
       send(IPC.transcript, { role, text } satisfies TranscriptPiece)
@@ -918,6 +927,51 @@ function offerToPhone(r: ToolCallResult): void {
   }
 }
 
+// The pairing code: made once, kept in userData, so the phone stays paired across restarts. It is the
+// only key to the remote (the relay stores only its hash), so it never goes in logs or git.
+function remotePairing(): { token: string } {
+  const file = join(app.getPath('userData'), 'remote.json')
+  try {
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as { token?: unknown }
+    if (typeof saved.token === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(saved.token)) return { token: saved.token }
+  } catch {
+    /* first run */
+  }
+  const token = randomBytes(24).toString('base64url')
+  writeFileSync(file, JSON.stringify({ token }), { mode: 0o600 })
+  return { token }
+}
+let remoteStatus: RemoteStatus | null = null
+function remoteInfo(): RemoteInfo {
+  const s = remoteStatus ?? remote?.status ?? null
+  const base = s?.relay ?? (s?.localPort ? `http://localhost:${s.localPort}` : null)
+  return {
+    relay: s?.relay ?? null,
+    online: !!s?.relayOnline,
+    localPort: s?.localPort ?? null,
+    pairUrl: base && remote ? `${base}/#t=${remote.token}` : null
+  }
+}
+
+// Phone commands that arrived while the agent was still thinking (see onCommand in registerIpc).
+let heldCommand: string | null = null
+let heldTimer: NodeJS.Timeout | null = null
+let sendCommand: (text: string) => void = () => {}
+let lastCommand = { text: '', at: 0 }
+// The safety net: still talking, wait a bit more; stuck thinking for a minute, send it anyway.
+function releaseWhenFree(): void {
+  heldTimer = null
+  if (heldCommand && brain.state === 'speaking') heldTimer = setTimeout(releaseWhenFree, 5_000)
+  else releaseCommand()
+}
+function releaseCommand(): void {
+  if (heldTimer) clearTimeout(heldTimer)
+  heldTimer = null
+  const text = heldCommand
+  heldCommand = null
+  if (text) sendCommand(text)
+}
+
 // Every confirmation goes through here, so the face shows "needs you" and the timeline records it.
 const CONFIRM_TITLE = 'Dreamwalker needs your OK' // the dialog's title (gatekeeper/confirm.ts); Home's "Review" finds it by this
 let askingParented = false // was the dialog attached to the main window (then focusing the window shows it)?
@@ -929,10 +983,22 @@ async function askUser(id: string, req: ConfirmRequest, meta: { tool?: string; r
   refreshPresence()
   try {
     const onLaptop = confirmer.ask({ ...req, tool: meta.tool, risk: meta.risk }, mainWindow?.isVisible() ? mainWindow : null)
-    // A phone-driven request has no one at the laptop, so also ask on the phone — first answer wins.
-    const reply = await (remote?.commandActive
-      ? Promise.race([onLaptop, remote.askConfirm(req.action, meta.risk ?? 'high').then((ok): Answer => (ok ? 'yes' : 'no'))])
-      : onLaptop)
+    // A phone-driven request has no one at the laptop, so also ask on the phone — first answer wins, and
+    // the other question is closed (an answer on the phone closes the laptop's dialog, and vice versa).
+    let reply: Answer
+    if (remote?.commandActive) {
+      const answered = new AbortController()
+      const onPhone = remote.askConfirm(req.action, meta.risk ?? 'high', answered.signal).then((ok): Answer | null => {
+        if (answered.signal.aborted) return null // the laptop answered first
+        confirmer.heardAnswer(ok ? 'yes' : 'no') // closes the laptop's dialog with the phone's answer
+        return ok ? 'yes' : 'no'
+      })
+      reply = await onLaptop
+      answered.abort()
+      reply = (await onPhone) ?? reply
+    } else {
+      reply = await onLaptop
+    }
     timeline.confirmAnswered(id, reply)
     return reply
   } finally {
@@ -1430,21 +1496,55 @@ function registerIpc(): void {
     }
   }
 
-  ipcMain.handle(IPC.sayText, (_event, text: unknown) => injectText(text))
+  sendCommand = (text) => {
+    remote?.emit({ type: 'turn-end' }) // whatever was being said ends here
+    try {
+      injectText(text)
+    } catch (err) {
+      if (remote) remote.commandActive = false
+      remote?.emit({ type: 'event', msg: `couldn't: ${errorMessage(err)}` })
+    }
+  }
 
-  // Remote control from the phone (M7), over a Cloudflare tunnel — no ADB, no same network.
+  ipcMain.handle(IPC.sayText, (_event, text: unknown) => {
+    if (remote) remote.commandActive = false // typed at the laptop: answers stay here
+    injectText(text)
+  })
+
+  // Remote control from the phone (M7): through the always-on relay (no tunnel, no same network), or a
+  // local server for your own tunnel. Same PWA either way (shared/remotePwa.ts).
+  const pairing = remotePairing()
   remote = startPhoneBridge({
+    token: pairing.token,
+    relayUrl: REMOTE.relay,
+    port: REMOTE.localPort,
     onContacts: (list) => setRemoteContacts(list), // contacts the user shares from the phone (local only)
     onCommand: (text) => {
-      remote?.emit({ type: 'event', msg: `on it: ${text}` })
-      try {
-        injectText(text)
-      } catch (err) {
-        if (remote) remote.commandActive = false
-        remote?.emit({ type: 'event', msg: `couldn't: ${errorMessage(err)}` })
+      console.log('[remote] a command from the phone')
+      // A new command while a question is open on the phone = the user moved on: that's a no (never a yes).
+      if (confirmer.pending) confirmer.heardAnswer('no')
+      // Same message twice in a row (a double tap): once is enough.
+      if (text === lastCommand.text && Date.now() - lastCommand.at < 5000) return
+      lastCommand = { text, at: Date.now() }
+      // Still working out the last one (no answer yet, or a tool running)? Then this one waits for that
+      // answer, like messages in a chat: text turns sent to Gemini mid-turn left it silent until the
+      // watchdog (4 commands in 1 s, 2026-10-29). Several waiting ones go together, as one turn.
+      if (brain.state === 'thinking' || heldCommand) {
+        heldCommand = heldCommand ? `${heldCommand}. Also: ${text}` : text
+        heldTimer ??= setTimeout(releaseWhenFree, 60_000) // never held forever
+        remote?.emit({ type: 'event', msg: 'got it: next, after this answer' })
+        return
       }
+      sendCommand(text)
+    },
+    onStop: () => brain.stopNow(),
+    onUpload: (name, data) => saveInDownloads(name, data),
+    onStatus: (status) => {
+      remoteStatus = status
+      send(IPC.remoteStatus, remoteInfo())
     }
   })
+  ipcMain.handle(IPC.remoteInfo, () => remoteInfo())
 
   // Same path as a Gemini reply, minus Gemini: proves Mouth + IPC work on their own.
   ipcMain.handle(IPC.playTestTone, async () => {

@@ -13,6 +13,13 @@ export const GEMINI = {
   searchLocation: 'global'
 } as const
 
+// The phone remote (main/phoneBridge.ts). The relay is ours (relay/server.ts, on a small always-on VM).
+// DW_RELAY=off switches it off (or points it at another relay); DW_PORT=0 switches the local server off.
+export const REMOTE = {
+  relay: process.env.DW_RELAY === 'off' ? null : process.env.DW_RELAY || 'https://34-171-9-175.sslip.io',
+  localPort: process.env.DW_PORT === '0' ? null : Number(process.env.DW_PORT || 8787)
+} as const
+
 // Gemini's audio formats (raw 16-bit PCM, mono).
 export const AUDIO = {
   outputSampleRate: 24_000, // what Gemini speaks at

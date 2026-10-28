@@ -22,6 +22,7 @@ export const IPC = {
   homeStats: 'home:stats', // today's numbers for Home (from the Ledger)
   retryConnection: 'link:retry', // Home's "Retry" when offline
   focusConfirmation: 'confirm:focus', // bring the confirmation dialog to the front (never answers it)
+  remoteInfo: 'remote:info', // the phone remote: relay, online, pairing link
   // Only answered when main runs with DREAMWALKER_DEBUG=1 (tests). Otherwise invoke() just fails.
   debugDropLink: 'debug:drop-link',
   debugCloseMain: 'debug:close-main',
@@ -46,6 +47,7 @@ export const IPC = {
   clearHistory: 'history:clear', // Settings: clear conversations, action log and memory (asks first)
   health: 'link:health',
   phoneStatus: 'phone:status',
+  remoteStatus: 'remote:status', // the phone remote's connection changed (RemoteInfo)
   windowVisible: 'window:visible', // main → main window: shown (true) / hidden or minimised (false)
 
   // renderer tells main, no reply (send / on)
@@ -292,6 +294,15 @@ export interface PhoneStatus {
   via?: 'wifi' | 'usb'
 }
 
+// The phone remote (main/phoneBridge.ts), as the Phone page shows it. pairUrl holds the pairing code:
+// it is shown as a QR code for the user's own phone and never logged.
+export interface RemoteInfo {
+  relay: string | null
+  online: boolean // the laptop is connected to the relay right now
+  localPort: number | null
+  pairUrl: string | null
+}
+
 // Home's "Today" card and Go-to tiles: counts from the Ledger (this computer's history).
 export interface HomeStats {
   today: number // actions today (not counting reads)
@@ -352,6 +363,7 @@ export interface DreamwalkerApi {
   refreshPhone(): Promise<PhoneStatus>
   retryConnection(): Promise<void>
   focusConfirmation(): Promise<void>
+  remoteInfo(): Promise<RemoteInfo>
   // Test hook for B6: close the Gemini connection as if the network died. Rejects unless main was
   // started with DREAMWALKER_DEBUG=1, so in a normal run a page script can't use it.
   debugDropLink(): Promise<void>
@@ -378,6 +390,7 @@ export interface DreamwalkerApi {
   onPresence(callback: (presence: Presence) => void): () => void
   onSessionEvent(callback: (event: SessionEvent) => void): () => void
   onHealth(callback: (health: LinkHealth) => void): () => void
+  onRemoteStatus(callback: (info: RemoteInfo) => void): () => void
   onPhoneStatus(callback: (status: PhoneStatus) => void): () => void
   // The page can't tell by itself: with backgroundThrottling off, document.hidden is always false.
   onWindowVisible(callback: (visible: boolean) => void): () => void

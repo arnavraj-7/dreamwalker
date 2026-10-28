@@ -33,6 +33,7 @@ const api: DreamwalkerApi = {
   refreshPhone: () => ipcRenderer.invoke(IPC.refreshPhone),
   retryConnection: () => ipcRenderer.invoke(IPC.retryConnection),
   focusConfirmation: () => ipcRenderer.invoke(IPC.focusConfirmation),
+  remoteInfo: () => ipcRenderer.invoke(IPC.remoteInfo),
   debugDropLink: () => ipcRenderer.invoke(IPC.debugDropLink),
   debugCloseMain: () => ipcRenderer.invoke(IPC.debugCloseMain),
   debugWindows: () => ipcRenderer.invoke(IPC.debugWindows),
@@ -53,6 +54,7 @@ const api: DreamwalkerApi = {
   onPresence: (callback) => subscribe(IPC.presence, callback),
   onSessionEvent: (callback) => subscribe(IPC.sessionEvent, callback),
   onHealth: (callback) => subscribe(IPC.health, callback),
+  onRemoteStatus: (callback) => subscribe(IPC.remoteStatus, callback),
   onPhoneStatus: (callback) => subscribe(IPC.phoneStatus, callback),
   onWindowVisible: (callback) => subscribe(IPC.windowVisible, callback),
 

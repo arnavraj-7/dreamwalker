@@ -1,7 +1,8 @@
 // PHONE (M4): the connected Android phone's status, and what you can ask for.
 
-import { useState } from 'react'
-import type { PhoneStatus } from '../../shared/ipc'
+import { useEffect, useState } from 'react'
+import qrcode from 'qrcode-generator'
+import type { PhoneStatus, RemoteInfo } from '../../shared/ipc'
 import { cleanError } from '../store'
 
 // One line for the Home tile / status strip.
@@ -26,6 +27,48 @@ const EXAMPLES = [
   'Text Rahul “running late” (it asks before anything is sent)',
   'Call Mom (always asks first)'
 ]
+
+// THE PHONE REMOTE: control this laptop from your phone, from anywhere (main/phoneBridge.ts). Scan once:
+// the phone keeps the pairing code, and can install the page as an app (Add to Home Screen).
+function RemoteCard() {
+  const [info, setInfo] = useState<RemoteInfo | null>(null)
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    void window.dreamwalker.remoteInfo().then(setInfo).catch(() => {})
+    return window.dreamwalker.onRemoteStatus(setInfo)
+  }, [])
+  if (!info) return null
+  if (!info.pairUrl) {
+    return (
+      <section className="setting">
+        <h2 className="rail-label">Phone remote</h2>
+        <p className="setting-hint">Switched off (DW_RELAY=off and DW_PORT=0).</p>
+      </section>
+    )
+  }
+  const qr = qrcode(0, 'M')
+  qr.addData(info.pairUrl)
+  qr.make()
+  return (
+    <section className="setting">
+      <h2 className="rail-label">Phone remote {info.relay ? (info.online ? '· online' : '· connecting…') : ''}</h2>
+      <p className="setting-hint">
+        Control this laptop from your phone, from anywhere: type or say what you want (“open Docker”, “send me the deck”,
+        “lock my laptop”), get files, and answer its questions there. Scan the code with the phone’s camera, open the link,
+        then “Add to Home Screen”. Risky actions still ask you first, on the phone. Keep this code private: it is the key.
+      </p>
+      {show ? (
+        <div className="remote-qr" style={{ background: '#fff', padding: 12, borderRadius: 12, width: 232 }} dangerouslySetInnerHTML={{ __html: qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }) }} />
+      ) : null}
+      <p>
+        <button className="btn" onClick={() => setShow(!show)}>
+          {show ? 'Hide the code' : 'Show pairing QR code'}
+        </button>
+        {info.relay ? <span className="setting-hint"> {info.relay.replace(/^https?:\/\//, '')}</span> : null}
+      </p>
+    </section>
+  )
+}
 
 export function PhonePage(props: { phone: PhoneStatus }) {
   const p = props.phone
@@ -86,6 +129,8 @@ export function PhonePage(props: { phone: PhoneStatus }) {
         </button>
         {error && <span className="err"> {error}</span>}
       </p>
+
+      <RemoteCard />
 
       <section className="setting">
         <h2 className="rail-label">Try saying</h2>

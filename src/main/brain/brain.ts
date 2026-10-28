@@ -106,6 +106,11 @@ export class Brain {
     return this.current
   }
 
+  // True while the rest of a talked-over (or stopped) reply is still arriving and being thrown away.
+  get discardingReply(): boolean {
+    return this.staleTurnOpen
+  }
+
   // The window after a reply, when the next words are taken without the wake word.
   get followUpByKey(): boolean {
     return this.byKey
