@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "outDir": "node_modules/.tmp/tsc-node"
   },
-  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": ["electron.vite.config.ts", "relay/**/*.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }
