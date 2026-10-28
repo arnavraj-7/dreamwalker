@@ -241,7 +241,7 @@ export function startPhoneBridge(opts: BridgeOptions): PhoneBridge {
       }
       if (stopped) break
       await sleep(backoff)
-      backoff = Math.min(backoff * 2, 30_000)
+      backoff = Math.min(backoff * 2, 10_000) // the relay restarting (a deploy, a reboot) is back within seconds
     }
   }
 
