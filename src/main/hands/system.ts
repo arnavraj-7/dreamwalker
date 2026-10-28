@@ -262,7 +262,7 @@ export async function findWindow(query: string): Promise<WindowInfo | string> {
   const matches =
     byTitle.length > 0
       ? byTitle
-      : bestMatches(windows, processName ?? query, (w) => w.process)
+      : bestMatches(windows, processName ?? query, (w) => w.process, 95) // program names: no fuzzy guess ("teams" is not "steam")
   if (matches.length === 0) return `No open window matches "${query}".`
   const programs = new Set(matches.map((w) => w.pid))
   if (programs.size > 1 && matches[0].title.toLowerCase() !== query.toLowerCase()) {

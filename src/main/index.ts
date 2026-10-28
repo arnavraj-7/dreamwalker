@@ -331,7 +331,8 @@ const brain = new Brain(
       send(IPC.agentState, state)
       if (state === 'idle') setTimeout(() => announceFinishedTasks(), 400)
       if (state === 'idle' && remote?.commandActive) remote.emit({ type: 'turn-end' })
-      if ((state === 'idle' || state === 'listening') && heldCommand) setTimeout(releaseCommand, 0) // answered: now the next one
+      // Answered: now the next one. Only when idle: 'listening' can be the user starting to talk at the laptop.
+      if (state === 'idle' && heldCommand) setTimeout(releaseCommand, 0)
       if (state === 'thinking') heardUntil ||= Date.now() // it noticed you stopped talking
       if (state === 'thinking') expectReply()
       // Before it answers, check whether another app is making sound (it decides the follow-up window).
@@ -1004,8 +1005,11 @@ async function askUser(id: string, req: ConfirmRequest, meta: { tool?: string; r
         confirmer.heardAnswer(ok ? 'yes' : 'no') // closes the laptop's dialog with the phone's answer
         return ok ? 'yes' : 'no'
       })
-      reply = await onLaptop
-      answered.abort()
+      try {
+        reply = await onLaptop
+      } finally {
+        answered.abort() // even if the laptop's dialog failed: never leave the phone's question open
+      }
       reply = (await onPhone) ?? reply
     } else {
       reply = await onLaptop
@@ -1517,6 +1521,7 @@ function registerIpc(): void {
   }
 
   sendCommand = (text) => {
+    if (remote) remote.commandActive = true // a held command: its answer goes to the phone too
     remote?.emit({ type: 'turn-end' }) // whatever was being said ends here
     try {
       injectText(text)
@@ -1633,6 +1638,7 @@ function registerIpc(): void {
     micIn(pcm)
   })
   ipcMain.on(IPC.micStart, () => {
+    if (remote) remote.commandActive = false // someone is at the laptop (push-to-talk): answers stay here
     if (!muted) brain.pushToTalkStart()
   })
   ipcMain.on(IPC.micStop, () => {
