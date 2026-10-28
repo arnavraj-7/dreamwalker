@@ -1,29 +1,18 @@
 // REMOTE: tools for when the user is away and drives the laptop from the phone (main/phoneBridge.ts).
 // "Send me the deck", "send me a screenshot", "lock my laptop".
 
-import { desktopCapturer, screen } from 'electron'
 import { spawn } from 'node:child_process'
 import { rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { PhoneBridge } from '../phoneBridge'
 import { resolveInside } from './files'
+import { screenJpeg } from './screen'
 import type { Tool } from './tool'
 import { isWindows, NOT_WINDOWS } from './windows'
 
 const fail = (err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err) })
 const mb = (n: number): string => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
-
-// The whole main screen at its real size, for a person to look at (Gemini's own screenshots are smaller).
-async function screenJpeg(): Promise<Buffer> {
-  const display = screen.getPrimaryDisplay()
-  const sf = display.scaleFactor
-  const thumbnailSize = { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) }
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize })
-  const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
-  if (!source || source.thumbnail.isEmpty()) throw new Error("Couldn't capture the screen.")
-  return source.thumbnail.toJPEG(85)
-}
 
 export function remoteTools(bridge: () => PhoneBridge | undefined): Tool[] {
   const sendToPhone: Tool = {
@@ -59,7 +48,7 @@ export function remoteTools(bridge: () => PhoneBridge | undefined): Tool[] {
         if (args.screenshot === true) {
           const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
           const file = join(tmpdir(), `Screenshot ${stamp}.jpg`)
-          await writeFile(file, await screenJpeg())
+          await writeFile(file, await screenJpeg(0, 85)) // its real size, for a person to read
           try {
             const sent = await b.offerFile(file)
             return { ok: true, sent: 'a screenshot of the screen', size: mb(sent.size) }

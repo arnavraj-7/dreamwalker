@@ -26,6 +26,20 @@ const JPEG_QUALITY = 70
 
 const attach = (jpeg: Buffer) => [{ mimeType: 'image/jpeg', data: jpeg.toString('base64') }]
 
+// The main screen as a JPEG, `width` px wide (0 = its real size). For the phone (send_to_phone) and the
+// screen watch (agent/watch.ts); take_screenshot below also remembers the picture's geometry for clicks.
+export async function screenJpeg(width = 0, quality = JPEG_QUALITY): Promise<Buffer> {
+  const display = screen.getPrimaryDisplay()
+  const sf = display.scaleFactor
+  const real = { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) }
+  const w = width > 0 ? Math.min(width, real.width) : real.width
+  const thumbnailSize = { width: w, height: Math.round((w * real.height) / real.width) }
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize })
+  const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
+  if (!source || source.thumbnail.isEmpty()) throw new Error("Couldn't capture the screen.")
+  return source.thumbnail.toJPEG(quality)
+}
+
 async function wholeScreen() {
   const display = screen.getPrimaryDisplay()
   const { width, height } = display.size

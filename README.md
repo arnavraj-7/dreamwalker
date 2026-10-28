@@ -24,12 +24,12 @@ audio).
 | A3 Real outcomes | After acting, it checks what really happened (file there? volume changed? window focused?) and says so honestly |
 | A4 Android phone | adb over USB or Wi-Fi: apps, tap / swipe / type, calls, texts, notifications, files, screenshots, same confirmation rules |
 | A5 Routines | Taught by voice ("when I say back home, open Docker, open VS Code and set the volume to 30"), run by name from the laptop or the phone; each step is a normal, checked action; save and delete can be undone |
+| A6 Screen watch | "Tell me when the download finishes": a background task looks at the screen every 10 s (Gemini Flash, yes/no) for up to an hour and announces it when seen, on the laptop and the phone. Asks first (the screen goes to Google); cancel like any task |
 | Phone remote | Control the laptop from your phone, from anywhere: an installable web app talks to the laptop through our always-on relay. Type or say a command, get files sent to the phone, send files to the laptop, answer its questions there, stop it |
 | C1 Unknown apps | Windows UI Automation + screenshots + mouse and keyboard (PC), screenshot + tap (phone). Partial |
 | C2 Prompt injection | Outside content (web, email, files) switches on caution mode: every action needs a confirmation. Partial |
 | C3 Hiding secrets | API keys, tokens, private keys, passwords in config files and in links are replaced with "[hidden …]" on this computer before outside content (files, clipboard, web, email, screen text) reaches Gemini or the Ledger. Not in screenshots. Partial |
 
-Not built: A6 (screen watch).
 
 ## Phone remote
 

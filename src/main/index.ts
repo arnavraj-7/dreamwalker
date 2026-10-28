@@ -43,6 +43,8 @@ import { remoteTools } from './hands/remote'
 import { RoutineStore, routineTools, routinesInstruction } from './hands/routines'
 import { saveInDownloads } from './hands/files'
 import { researchTools } from './agent/research'
+import { watchTools } from './agent/watch'
+import { screenJpeg } from './hands/screen'
 import { othersPlaying, stopInputHost } from './hands/pcinput'
 import { PhoneLink } from './phone/link'
 import { asOutcome, type Tool, type ToolOutcome, type ToolResult } from './hands/tool'
@@ -430,6 +432,8 @@ const tasks = new TaskManager({
 })
 registerTools(taskTools(() => tasks))
 registerTools(researchTools(() => tasks))
+// Screen watch (A6, agent/watch.ts): small pictures (1024 px) are enough to read a status.
+registerTools(watchTools(() => tasks, () => screenJpeg(1024, 60)))
 
 // THE OPEN FOLLOW-UP WINDOW closes as soon as another app makes sound: a video Orbi just started began
 // its ad DURING the reply, so the check before the reply missed it, and Orbi chatted with the ad ("Birla
