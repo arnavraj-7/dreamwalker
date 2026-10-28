@@ -35,6 +35,28 @@ describe('hiding secrets before they reach Gemini (C3)', () => {
     assert.equal(hide('postgres://me:longsecretvalue@localhost:5432/app'), 'postgres://me:[hidden password]@localhost:5432/app')
   })
 
+  it('more keys: tokens by name, Hugging Face, Django, Bearer', () => {
+    assert.equal(hide('GITHUB_TOKEN=abcdef1234567890abcdef'), 'GITHUB_TOKEN=[hidden password]')
+    assert.equal(hide('HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyz0123456789'), 'HF_TOKEN=[hidden Hugging Face token]')
+    assert.equal(hide("SECRET_KEY = 'django-insecure-x9#k2!abc'"), 'SECRET_KEY = [hidden password]')
+    assert.equal(hide('Authorization: Bearer abcdEFGH1234ijklMNOP5678'), 'Authorization: Bearer [hidden token]')
+  })
+
+  it('code stays readable (found in review, 2026-10-29)', () => {
+    for (const t of [
+      'api_key = os.environ.get("API_KEY")',
+      'self.password = hash_password(raw)',
+      'apiKey: config.apiKey,',
+      'password = raw_password',
+      'token = request.headers["x-token"]',
+      'PWD=C:/Users/hp/projects',
+      'OLDPWD=/home/me',
+      'The secret: happiness.'
+    ]) {
+      assert.equal(hide(t), t, t)
+    }
+  })
+
   it('leaves ordinary text alone', () => {
     for (const t of [
       'Your password: must be at least eight characters',

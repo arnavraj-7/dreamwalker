@@ -16,9 +16,16 @@ interface Rule {
   when?: (m: RegExpExecArray) => boolean
 }
 
-// A value that looks like a real secret: long, or with a digit or a symbol in it.
+// A value that looks like a real secret: long, or with a digit or a symbol in it. Not code: in a source file
+// `api_key = os.environ.get("API_KEY")` or `password = hash_password(raw)` must stay readable.
 const secretish = (v: string): boolean => {
+  const quoted = /^["']/.test(v)
   const s = v.replace(/^["']|["']$/g, '')
+  if (!quoted) {
+    if (/^[A-Za-z_$][\w$]*(\.[\w$]+)+/.test(s)) return false // config.apiKey, os.environ...
+    if (/[([]/.test(s)) return false // a call or an index: hash_password(raw), env["X"]
+    if (/^[A-Za-z_]+[.!?]?$/.test(s)) return false // a plain name or word, no digits: raw_password, "happiness."
+  }
   return s.length >= 12 || (s.length >= 6 && /[^A-Za-z]/.test(s))
 }
 
@@ -28,9 +35,11 @@ const RULES: Rule[] = [
   { kind: 'Google API key', re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
   { kind: 'GitHub token', re: /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/g },
   { kind: 'API key', re: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}/g },
+  { kind: 'Hugging Face token', re: /\bhf_[A-Za-z0-9]{30,}/g },
   { kind: 'Slack token', re: /\bxox[abposr]-[A-Za-z0-9-]{10,}/g },
   { kind: 'Stripe key', re: /\b[sr]k_(?:live|test)_[0-9A-Za-z]{16,}/g },
   { kind: 'token', re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g }, // a JWT
+  { kind: 'token', re: /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{20,})/g, keep: (m) => ({ before: m[1], after: '' }) },
   // user:password@host in a link or connection string: hide the password only.
   {
     kind: 'password',
@@ -40,7 +49,7 @@ const RULES: Rule[] = [
   // password = "…", API_KEY: …, "secret": "…" (config files, .env, JSON): keep the name, hide the value.
   {
     kind: 'password',
-    re: /\b((?:[A-Za-z0-9_]*?)(?:password|passwd|pwd|passcode|secret|api[_-]?key|access[_-]?key|auth[_-]?token|access[_-]?token|client[_-]?secret|private[_-]?key)["']?\s*[:=]\s*)("[^"\n]{4,}"|'[^'\n]{4,}'|[^\s"',;}{]{4,})/gi,
+    re: /\b((?:[A-Za-z0-9_]*?)(?:password|passwd|passcode|secret[_-]?key|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret|private[_-]?key)["']?\s*[:=]\s*)("[^"\n]{4,}"|'[^'\n]{4,}'|[^\s"',;}{]{4,})/gi,
     keep: (m) => ({ before: m[1], after: '' }),
     when: (m) => secretish(m[2])
   }
