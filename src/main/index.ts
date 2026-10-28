@@ -40,6 +40,7 @@ import { focusWindowTitled, isWindows } from './hands/windows'
 import { taskTools } from './hands/taskTools'
 import { phoneTools } from './hands/phone'
 import { remoteTools } from './hands/remote'
+import { RoutineStore, routineTools, routinesInstruction } from './hands/routines'
 import { saveInDownloads } from './hands/files'
 import { researchTools } from './agent/research'
 import { othersPlaying, stopInputHost } from './hands/pcinput'
@@ -402,6 +403,10 @@ const phone = new PhoneLink((status) => send(IPC.phoneStatus, status))
 registerTools(phoneTools(phone))
 registerTools(remoteTools(() => remote))
 
+// Routines taught by voice (A5, hands/routines.ts): "when I say back home, open Docker and VS Code".
+const routines = new RoutineStore(join(app.getPath('userData'), 'routines.json'))
+registerTools(routineTools(() => routines))
+
 // ── Background tasks (A2, src/main/tasks/tasks.ts) ──────────────────────────────────────────
 // Each task is a PowerShell process streaming its output line by line (ForEach-Object passes each line
 // on as soon as it exists; Out-String would wait for the end). 30 min limit, output capped.
@@ -630,7 +635,8 @@ const link = new Link(
   // Asked at each NEW conversation (a resumed one keeps the instructions it started with).
   () => {
     const memory = settings.memory ? memoryInstruction(memoryNote) : ''
-    return memory ? `${systemInstruction(settings.agentName)}\n\n${memory}` : systemInstruction(settings.agentName)
+    const extra = [memory, routinesInstruction(routines)].filter(Boolean).join('\n\n')
+    return extra ? `${systemInstruction(settings.agentName)}\n\n${extra}` : systemInstruction(settings.agentName)
   },
   sessionStore()
 )

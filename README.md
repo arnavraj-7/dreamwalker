@@ -23,11 +23,12 @@ audio).
 | A2 Background tasks | Long jobs (documents, research) run in their own process; ask about them, cancel them, run several |
 | A3 Real outcomes | After acting, it checks what really happened (file there? volume changed? window focused?) and says so honestly |
 | A4 Android phone | adb over USB or Wi-Fi: apps, tap / swipe / type, calls, texts, notifications, files, screenshots, same confirmation rules |
+| A5 Routines | Taught by voice ("when I say back home, open Docker, open VS Code and set the volume to 30"), run by name from the laptop or the phone; each step is a normal, checked action; save and delete can be undone |
 | Phone remote | Control the laptop from your phone, from anywhere: an installable web app talks to the laptop through our always-on relay. Type or say a command, get files sent to the phone, send files to the laptop, answer its questions there, stop it |
 | C1 Unknown apps | Windows UI Automation + screenshots + mouse and keyboard (PC), screenshot + tap (phone). Partial |
 | C2 Prompt injection | Outside content (web, email, files) switches on caution mode: every action needs a confirmation. Partial |
 
-Not built: A5 (routines taught by voice), A6 (screen watch), C3 (hiding passwords before they reach Gemini).
+Not built: A6 (screen watch), C3 (hiding passwords before they reach Gemini).
 
 ## Phone remote
 

@@ -11,7 +11,7 @@
     "dev:watch": "electron-vite dev --watch",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "test": "node --test --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/main/brain/brain.test.ts src/main/wake/tokenizer.test.ts src/main/link/outbox.test.ts src/main/hands/process.test.ts src/main/ledger/ledger.test.ts src/main/gatekeeper/gatekeeper.test.ts src/main/ledger/idempotency.test.ts src/main/tasks/tasks.test.ts src/main/presence.test.ts src/main/session.test.ts src/main/wake/gate.test.ts src/main/memory.test.ts src/main/hands/keymap.test.ts src/main/phone/parse.test.ts src/main/hands/pcmap.test.ts src/main/honesty.test.ts src/main/google/parse.test.ts src/main/remote.test.ts src/main/hands/fuzzy.test.ts",
+    "test": "node --test --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/main/brain/brain.test.ts src/main/wake/tokenizer.test.ts src/main/link/outbox.test.ts src/main/hands/process.test.ts src/main/ledger/ledger.test.ts src/main/gatekeeper/gatekeeper.test.ts src/main/ledger/idempotency.test.ts src/main/tasks/tasks.test.ts src/main/presence.test.ts src/main/session.test.ts src/main/wake/gate.test.ts src/main/memory.test.ts src/main/hands/keymap.test.ts src/main/phone/parse.test.ts src/main/hands/pcmap.test.ts src/main/honesty.test.ts src/main/google/parse.test.ts src/main/remote.test.ts src/main/hands/fuzzy.test.ts src/main/hands/routines.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false"
   },
   "dependencies": {
