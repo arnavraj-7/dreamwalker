@@ -17,6 +17,12 @@ the final README copies it.
 | `voice-glow` | 0.3.0 | MIT | The glow along the command bar's bottom edge, driven by our own voice levels (it never opens the mic) |
 | `thinking-orbs` | 0.3.2 | MIT | The small dotted "working" indicator on running background tasks |
 | `@fontsource-variable/geist`, `@fontsource-variable/geist-mono` | 5.3.0 | OFL-1.1 | Geist and Geist Mono fonts, bundled locally |
+| `fuzzball` | 2.2.6 | MIT | Fuzzy name matching (JS port of Python's thefuzz) for apps, windows and `find_files`; its dependencies `lodash`, `heap`, `setimmediate` are MIT |
+| `qrcode-generator` | 2.0.4 | MIT | The phone remote's pairing QR code (Phone page); no dependencies |
+
+## The phone remote's relay (our VM, not shipped in the app)
+Google Compute Engine (e2-micro), Node.js 24 (MIT, no npm packages), Caddy (Apache-2.0) for HTTPS with Let's
+Encrypt / ZeroSSL certificates, sslip.io (free DNS for the VM's IP). Code: `relay/`.
 
 Before installing `voice-glow` and `thinking-orbs` (new packages, one maintainer each) we downloaded
 their tarballs and checked them: no install scripts, no network calls, no `eval`, no dependencies.

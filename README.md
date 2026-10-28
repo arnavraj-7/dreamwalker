@@ -23,10 +23,28 @@ audio).
 | A2 Background tasks | Long jobs (documents, research) run in their own process; ask about them, cancel them, run several |
 | A3 Real outcomes | After acting, it checks what really happened (file there? volume changed? window focused?) and says so honestly |
 | A4 Android phone | adb over USB or Wi-Fi: apps, tap / swipe / type, calls, texts, notifications, files, screenshots, same confirmation rules |
+| Phone remote | Control the laptop from your phone, from anywhere: an installable web app talks to the laptop through our always-on relay. Type or say a command, get files sent to the phone, send files to the laptop, answer its questions there, stop it |
 | C1 Unknown apps | Windows UI Automation + screenshots + mouse and keyboard (PC), screenshot + tap (phone). Partial |
 | C2 Prompt injection | Outside content (web, email, files) switches on caution mode: every action needs a confirmation. Partial |
 
 Not built: A5 (routines taught by voice), A6 (screen watch), C3 (hiding passwords before they reach Gemini).
+
+## Phone remote
+
+Open Orbi → **Phone** → **Show pairing QR code**, scan it with the phone, then "Add to Home Screen". From then on,
+from anywhere: "open Docker", "send me the DBMS assignment", "send me a screenshot", "lock my laptop", or attach
+a file to put it in the laptop's Downloads. Names may be rough: apps, windows and files are matched fuzzily.
+
+- **How it connects:** the laptop dials out to a small relay (`relay/server.ts`) on an always-on Google Cloud
+  VM (e2-micro, HTTPS by Caddy), and the phone opens the relay's page. Nothing at home needs an open port.
+  `node relay/deploy.mjs` ships a new relay; `relay/vm-startup.sh` sets the VM up.
+- **Pairing code:** made once, kept in the app's user-data folder (`remote.json`), never logged. The relay keeps no
+  accounts: a laptop and its phones meet in a room named by the code's SHA-256, everything in memory.
+- **Same rules as the voice:** a phone command is a normal request (Gatekeeper, Ledger, undo). Risky actions ask
+  on the phone and on the laptop at once; the first answer wins and closes the other. No answer in 60 s = no.
+- **Without the relay:** `DW_RELAY=off`; the app still serves the same page on `http://localhost:8787` for your
+  own tunnel (`cloudflared tunnel --url http://localhost:8787`). `DW_PORT=0` turns that off too.
+- **Laptop must be awake:** keep it plugged in with sleep off; a sleeping laptop shows "laptop offline".
 
 ## Run it (Windows)
 
@@ -80,11 +98,21 @@ The docs in [`docs/`](docs/README.md) explain each part, the design decisions an
 | `pptxgenjs` | 4.0.1 | MIT | Writes PowerPoint decks |
 | `react`, `react-dom` | 19.x | MIT | UI |
 | `voice-glow` | 0.3.0 | MIT | The glow along the command bar, driven by our own voice levels |
+| `fuzzball` | 2.2.6 | MIT | Fuzzy name matching (port of Python's thefuzz): apps, windows, `find_files`. Brings `lodash`, `heap`, `setimmediate` (MIT) |
+| `qrcode-generator` | 2.0.4 | MIT | The pairing QR code on the Phone page |
 | `thinking-orbs` | 0.3.2 | MIT | The "working" indicator on background tasks |
 | `@fontsource-variable/geist`, `geist-mono` | 5.3.0 | OFL-1.1 | Fonts, bundled locally |
 | Android platform-tools (adb) | latest | Android SDK license | Phone control, downloaded by `npm run tools` |
 | Open-Meteo API | web API | CC BY 4.0, no key | Weather |
 | Gmail, Calendar and Drive APIs | REST | Google APIs Terms | The user's own mail, calendar and Drive, after they sign in |
+
+### The relay (runs on our VM, not in the app)
+| Software / service | License | What for |
+|---|---|---|
+| Google Compute Engine (e2-micro, us-central1) | Google Cloud Terms | The always-on VM |
+| Node.js 24 | MIT | Runs `relay/server.ts` (no npm packages) |
+| Caddy | Apache-2.0 | HTTPS in front of the relay; gets the certificate by itself (Let's Encrypt / ZeroSSL) |
+| sslip.io | free DNS service | A hostname for the VM's IP, needed for the certificate |
 
 Build tools (not shipped): Electron, electron-vite, Vite, `@vitejs/plugin-react`, TypeScript, `@types/*`.
 
